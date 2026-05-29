@@ -5,6 +5,44 @@ import config from './config';
 
 let server: Server;
 
+// ─── Vercel Serverless Connection Cache ───────────────────────────────────────
+// Vercel serverless functions reuse warm Node.js instances between invocations.
+// Caching the connection on the `global` object prevents opening a new
+// MongoDB connection on every request and avoids "buffering timed out" errors.
+declare global {
+  // eslint-disable-next-line no-var
+  var _mongooseConnection: typeof mongoose | undefined;
+}
+
+async function connectDB(): Promise<void> {
+  if (global._mongooseConnection) {
+    // Reuse existing cached connection
+    if (mongoose.connection.readyState === 1) {
+      console.log('🛢 Reusing cached database connection');
+      return;
+    }
+  }
+
+  const dbUrl = config.database_url;
+  if (!dbUrl) {
+    throw new Error(
+      '❌ DATABASE_URL is not defined. Check your environment variables in Vercel dashboard.',
+    );
+  }
+
+  await mongoose.connect(dbUrl, {
+    serverSelectionTimeoutMS: 10000,
+    socketTimeoutMS: 45000,
+    maxPoolSize: 10,
+    minPoolSize: 5,
+    retryWrites: true,
+  });
+
+  global._mongooseConnection = mongoose;
+  console.log('🛢 Database is connected successfully');
+}
+// ──────────────────────────────────────────────────────────────────────────────
+
 process.on('uncaughtException', (error) => {
   console.error(' Uncaught Exception detected, shutting down...', error);
   process.exit(1);
@@ -12,8 +50,7 @@ process.on('uncaughtException', (error) => {
 
 async function main() {
   try {
-    await mongoose.connect(config.database_url as string);
-    console.log(`🛢 Database is connected successfully`);
+    await connectDB();
 
     server = app.listen(config.port, () => {
       console.log(`Application listening on port ${config.port}`);
