@@ -47,21 +47,12 @@ const registerUser = catchAsync(async (req: Request, res: Response) => {
   const { ...registerData } = req.body as IRegisterUser;
   const result = await AuthService.registerUser(registerData);
 
-  res.cookie(authCookieNames.accessToken, result.accessToken, getAccessCookieOptions(req));
-  res.cookie(
-    authCookieNames.refreshToken,
-    result.refreshToken,
-    getRefreshCookieOptions(req),
-  );
-
   sendResponse<any>(res, {
     statusCode: httpStatus.CREATED,
     success: true,
-    message: 'Account created successfully',
+    message: 'Account created successfully. Please login to continue.',
     data: { 
-      user: result.user,
-      accessToken: result.accessToken,
-      refreshToken: result.refreshToken
+      user: result.user
     },
   });
 });
