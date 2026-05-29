@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    /* Target & Module */
+    "target": "ES2022" /* Modern Node.js versions (18, 20, 22) e support kore */,
+    "module": "Node16" /* Modern industry standard */,
+    "moduleResolution": "Node16" /* Fixes the 'node' (node10) deprecation error */,
+    "lib": ["ES2022"],
+
+    /* Output & Structure */
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "removeComments": true /* Production code clean rakhe */,
+    "sourceMap": true /* Debugging-er jonno dorkar */,
+    "declaration": true /* Types export kore */,
+
+    /* Strictness & Security */
+    "strict": true /* Type safety ensure kore */,
+    "noImplicitAny": true /* Coding error komay */,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "noUnusedLocals": true /* Unused code clean rakhe */,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+
+    /* Interop & Compatibility */
+    "esModuleInterop": true /* CommonJS module support korar jonno */,
+    "skipLibCheck": true /* Dependency library error skip kore build fast kore */,
+    "forceConsistentCasingInFileNames": true /* Windows/Linux compatibility check */,
+    "resolveJsonModule": true,
+
+    "typeRoots": ["./node_modules/@types", "./src/types"]
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "tests"]
+}
