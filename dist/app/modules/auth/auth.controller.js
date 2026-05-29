@@ -50,7 +50,11 @@ const registerUser = (0, catchAsync_1.default)(async (req, res) => {
         statusCode: http_status_1.default.CREATED,
         success: true,
         message: 'Account created successfully',
-        data: { user: result.user },
+        data: {
+            user: result.user,
+            accessToken: result.accessToken,
+            refreshToken: result.refreshToken
+        },
     });
 });
 const loginUser = (0, catchAsync_1.default)(async (req, res) => {
@@ -62,7 +66,11 @@ const loginUser = (0, catchAsync_1.default)(async (req, res) => {
         statusCode: http_status_1.default.OK,
         success: true,
         message: 'User logged in successfully',
-        data: { user: result.user },
+        data: {
+            user: result.user,
+            accessToken: result.accessToken,
+            refreshToken: result.refreshToken
+        },
     });
 });
 const refreshToken = (0, catchAsync_1.default)(async (req, res) => {

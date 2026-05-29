@@ -5,7 +5,6 @@ import sendResponse from '../../utils/sendResponse';
 import { AuthService } from './auth.service';
 import { User } from '../user/user.model';
 import {
-  ILoginUserResponse,
   IRefreshTokenResponse,
   IRegisterUser,
 } from './auth.interface';
@@ -91,7 +90,15 @@ const loginUser = catchAsync(async (req: Request, res: Response) => {
 });
 
 const refreshToken = catchAsync(async (req: Request, res: Response) => {
-  const token = req.cookies?.[authCookieNames.refreshToken];
+  let token = req.cookies?.[authCookieNames.refreshToken];
+
+  // Secure fallback for cross-origin environments where httpOnly cookies might be blocked
+  if (!token && req.headers['x-refresh-token']) {
+    token = req.headers['x-refresh-token'] as string;
+  }
+  if (!token && req.body?.refreshToken) {
+    token = req.body.refreshToken as string;
+  }
 
   if (!token) {
     throw new ApiError(httpStatus.UNAUTHORIZED, 'Refresh token missing');
