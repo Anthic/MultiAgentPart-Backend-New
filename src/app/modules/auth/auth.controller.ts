@@ -55,11 +55,15 @@ const registerUser = catchAsync(async (req: Request, res: Response) => {
     getRefreshCookieOptions(req),
   );
 
-  sendResponse<ILoginUserResponse>(res, {
+  sendResponse<any>(res, {
     statusCode: httpStatus.CREATED,
     success: true,
     message: 'Account created successfully',
-    data: { user: result.user },
+    data: { 
+      user: result.user,
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken
+    },
   });
 });
 
@@ -74,11 +78,15 @@ const loginUser = catchAsync(async (req: Request, res: Response) => {
     getRefreshCookieOptions(req),
   );
 
-  sendResponse<ILoginUserResponse>(res, {
+  sendResponse<any>(res, {
     statusCode: httpStatus.OK,
     success: true,
     message: 'User logged in successfully',
-    data: { user: result.user },
+    data: { 
+      user: result.user,
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken
+    },
   });
 });
 
