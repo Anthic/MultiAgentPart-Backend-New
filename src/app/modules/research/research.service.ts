@@ -32,6 +32,23 @@ const startResearch = async (
       const parsed = JSON.parse(cached) as IPythonJobResponse;
       // If it is cached and either done or still recently running, return it
       if (parsed.status === 'done' || parsed.status === 'running') {
+        if (userId && parsed.result && parsed.status === 'done') {
+          // Asynchronously save to history in background so we don't slow down the response
+          const jobResult = parsed.result;
+          pythonApiClient.post('/history', {
+            job_id: parsed.job_id || crypto.randomUUID().substring(0, 12),
+            user_id: userId,
+            topic: jobResult.topic || payload.topic,
+            report: jobResult.report || '',
+            critique: jobResult.critique || '',
+            score: jobResult.critique_score || 0,
+            fact_score: jobResult.fact_check_score || 0,
+            urls: jobResult.verified_urls || [],
+            time_sec: jobResult.time_sec || 0,
+          }).catch((err) => {
+            console.error('Failed to save cached job to history:', err.message);
+          });
+        }
         return parsed;
       }
     }
