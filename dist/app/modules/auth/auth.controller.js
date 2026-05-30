@@ -44,16 +44,12 @@ const getClearCookieOptions = (req) => {
 const registerUser = (0, catchAsync_1.default)(async (req, res) => {
     const { ...registerData } = req.body;
     const result = await auth_service_1.AuthService.registerUser(registerData);
-    res.cookie(auth_1.authCookieNames.accessToken, result.accessToken, getAccessCookieOptions(req));
-    res.cookie(auth_1.authCookieNames.refreshToken, result.refreshToken, getRefreshCookieOptions(req));
     (0, sendResponse_1.default)(res, {
         statusCode: http_status_1.default.CREATED,
         success: true,
-        message: 'Account created successfully',
+        message: 'Account created successfully. Please login to continue.',
         data: {
-            user: result.user,
-            accessToken: result.accessToken,
-            refreshToken: result.refreshToken
+            user: result.user
         },
     });
 });
@@ -74,7 +70,13 @@ const loginUser = (0, catchAsync_1.default)(async (req, res) => {
     });
 });
 const refreshToken = (0, catchAsync_1.default)(async (req, res) => {
-    const token = req.cookies?.[auth_1.authCookieNames.refreshToken];
+    let token = req.cookies?.[auth_1.authCookieNames.refreshToken];
+    if (!token && req.headers['x-refresh-token']) {
+        token = req.headers['x-refresh-token'];
+    }
+    if (!token && req.body?.refreshToken) {
+        token = req.body.refreshToken;
+    }
     if (!token) {
         throw new ApiError_1.default(http_status_1.default.UNAUTHORIZED, 'Refresh token missing');
     }

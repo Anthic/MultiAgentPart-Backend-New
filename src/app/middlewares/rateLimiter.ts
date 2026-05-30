@@ -42,6 +42,15 @@ export const getResearchQuota = async (userId: string): Promise<ResearchQuota> =
   };
 };
 
+export const refundResearchQuota = async (userId: string): Promise<void> => {
+  const key = researchQuotaKey(userId);
+  const current = parseInt((await redis.get(key)) ?? '0', 10);
+
+  if (current > 0) {
+    await redis.decr(key);
+  }
+};
+
 export const apiRateLimiter = rateLimit({
   windowMs,
   max: maxRequests,

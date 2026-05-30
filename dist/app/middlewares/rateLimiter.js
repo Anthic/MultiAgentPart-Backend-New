@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.aiRequestLimiter = exports.authRateLimiter = exports.apiRateLimiter = exports.getResearchQuota = void 0;
+exports.aiRequestLimiter = exports.authRateLimiter = exports.apiRateLimiter = exports.refundResearchQuota = exports.getResearchQuota = void 0;
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const config_1 = __importDefault(require("../../config"));
 const redis_1 = require("../../config/redis");
@@ -33,6 +33,14 @@ const getResearchQuota = async (userId) => {
     };
 };
 exports.getResearchQuota = getResearchQuota;
+const refundResearchQuota = async (userId) => {
+    const key = researchQuotaKey(userId);
+    const current = parseInt((await redis_1.redis.get(key)) ?? '0', 10);
+    if (current > 0) {
+        await redis_1.redis.decr(key);
+    }
+};
+exports.refundResearchQuota = refundResearchQuota;
 exports.apiRateLimiter = (0, express_rate_limit_1.default)({
     windowMs,
     max: maxRequests,

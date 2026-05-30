@@ -13,7 +13,16 @@ const rateLimiter_1 = require("../../middlewares/rateLimiter");
 const startResearch = (0, catchAsync_1.default)(async (req, res) => {
     const { topic } = req.body;
     const userId = req.user?.userId;
-    const result = await research_service_1.ResearchService.startResearch({ topic }, userId);
+    let result;
+    try {
+        result = await research_service_1.ResearchService.startResearch({ topic }, userId);
+    }
+    catch (error) {
+        if (userId && req.researchQuota) {
+            await (0, rateLimiter_1.refundResearchQuota)(userId);
+        }
+        throw error;
+    }
     (0, sendResponse_1.default)(res, {
         statusCode: http_status_1.default.ACCEPTED,
         success: true,

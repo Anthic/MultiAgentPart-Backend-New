@@ -20,6 +20,22 @@ const startResearch = async (payload, userId) => {
         if (cached) {
             const parsed = JSON.parse(cached);
             if (parsed.status === 'done' || parsed.status === 'running') {
+                if (userId && parsed.result && parsed.status === 'done') {
+                    const jobResult = parsed.result;
+                    axiosClient_1.pythonApiClient.post('/history', {
+                        job_id: parsed.job_id || crypto_1.default.randomUUID().substring(0, 12),
+                        user_id: userId,
+                        topic: jobResult.topic || payload.topic,
+                        report: jobResult.report || '',
+                        critique: jobResult.critique || '',
+                        score: jobResult.critique_score || 0,
+                        fact_score: jobResult.fact_check_score || 0,
+                        urls: jobResult.verified_urls || [],
+                        time_sec: jobResult.time_sec || 0,
+                    }).catch((err) => {
+                        console.error('Failed to save cached job to history:', err.message);
+                    });
+                }
                 return parsed;
             }
         }
@@ -57,7 +73,7 @@ const getJobStatus = async (jobId) => {
                             job_id: dbRec.job_id || String(dbRec.id),
                             status: 'done',
                             progress: 100,
-                            stage: '✨ Complete',
+                            stage: 'Complete',
                             result: {
                                 topic: dbRec.topic,
                                 report: dbRec.report || '',
@@ -116,7 +132,7 @@ const getResearchHistory = async (limit = 10, userId) => {
             user_id: rec.user_id,
             status: 'done',
             progress: 100,
-            stage: ' Complete',
+            stage: 'Complete',
             result: {
                 topic: rec.topic,
                 report: rec.report || '',

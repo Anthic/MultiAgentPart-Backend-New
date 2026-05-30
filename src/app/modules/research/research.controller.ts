@@ -8,12 +8,21 @@ import { ResearchService } from './research.service';
 import httpStatus from 'http-status';
 import sendResponse from '../../utils/sendResponse';
 import ApiError from '../../errors/ApiError';
-import { getResearchQuota } from '../../middlewares/rateLimiter';
+import { getResearchQuota, refundResearchQuota } from '../../middlewares/rateLimiter';
 const startResearch = catchAsync(async (req: Request, res: Response) => {
   const { topic } = req.body as IResearchStartRequest;
   const userId = req.user?.userId;
 
-  const result = await ResearchService.startResearch({ topic }, userId);
+  let result: IPythonJobResponse;
+  try {
+    result = await ResearchService.startResearch({ topic }, userId);
+  } catch (error) {
+    if (userId && req.researchQuota) {
+      await refundResearchQuota(userId);
+    }
+
+    throw error;
+  }
 
   sendResponse(res, {
     statusCode: httpStatus.ACCEPTED,

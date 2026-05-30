@@ -106,7 +106,7 @@ const getJobStatus = async (jobId: string): Promise<IPythonJobResponse> => {
               job_id: dbRec.job_id || String(dbRec.id),
               status: 'done' as const,
               progress: 100,
-              stage: '✨ Complete',
+              stage: 'Complete',
               result: {
                 topic: dbRec.topic,
                 report: dbRec.report || '',
@@ -182,7 +182,7 @@ const getResearchHistory = async (
       user_id: rec.user_id, // Map user_id!
       status: 'done' as const,
       progress: 100,
-      stage: ' Complete',
+      stage: 'Complete',
       result: {
         topic: rec.topic,
         report: rec.report || '',
