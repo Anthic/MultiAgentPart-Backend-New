@@ -32,10 +32,26 @@ const createUserByAdmin = async (payload: IAdminCreateUser): Promise<IUser> => {
   return createdUser.toObject() as IUser;
 };
 
-const getAllUsers = async (): Promise<IUser[]> => {
-  const users = await User.find();
-  return users as IUser[];
+const getAllUsers = async (
+  page: number = 1,
+  limit: number = 10,
+): Promise<{ data: IUser[]; meta: { page: number; limit: number; total: number } }> => {
+  const skip = (page - 1) * limit;
+
+  const [users, total] = await Promise.all([
+    User.find().skip(skip).limit(limit),
+    User.countDocuments(),
+  ]);
+  return {
+    data: users as IUser[],
+    meta: {
+      page,
+      limit,
+      total,
+    },
+  };
 };
+
 
 const getUserById = async (userId: string): Promise<IUser> => {
   const user = (await User.findOne({ id: userId })) as IUser | null;

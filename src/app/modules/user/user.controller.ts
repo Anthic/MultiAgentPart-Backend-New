@@ -17,14 +17,16 @@ const createUserByAdmin = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
-const getAllUsers = catchAsync(async (_req: Request, res: Response) => {
-  const result = await UserService.getAllUsers();
-
+const getAllUsers = catchAsync(async (req: Request, res: Response) => {
+  const page = parseInt(req.query.page as string, 10) || 1;
+  const limit = parseInt(req.query.limit as string, 10) || 10;
+  const { data, meta } = await UserService.getAllUsers(page, limit);
   sendResponse<IUser[]>(res, {
     statusCode: httpStatus.OK,
     success: true,
     message: 'Users retrieved successfully',
-    data: result,
+    meta,
+    data,
   });
 });
 

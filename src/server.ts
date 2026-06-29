@@ -13,7 +13,7 @@ declare global {
   // eslint-disable-next-line no-var
   var _mongooseConnection: typeof mongoose | undefined;
 }
-
+const isServerless = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
 async function connectDB(): Promise<void> {
   if (global._mongooseConnection) {
     // Reuse existing cached connection
@@ -26,20 +26,20 @@ async function connectDB(): Promise<void> {
   const dbUrl = config.database_url;
   if (!dbUrl) {
     throw new Error(
-      '❌ DATABASE_URL is not defined. Check your environment variables in Vercel dashboard.',
+      ' DATABASE_URL is not defined. Check your environment variables in Vercel dashboard.',
     );
   }
 
   await mongoose.connect(dbUrl, {
     serverSelectionTimeoutMS: 10000,
     socketTimeoutMS: 45000,
-    maxPoolSize: 10,
-    minPoolSize: 5,
+    maxPoolSize: isServerless ? 3 : 50,
+    minPoolSize: isServerless ? 1 : 10,
     retryWrites: true,
   });
 
   global._mongooseConnection = mongoose;
-  console.log('🛢 Database is connected successfully');
+  // console.log(' Database is connected successfully');
 }
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -57,7 +57,7 @@ async function main() {
     });
   } catch (err) {
     console.error(' Database connection failed:', err);
-    console.log(' Retrying in 5 seconds...');
+    // console.log(' Retrying in 5 seconds...');
     setTimeout(main, 5000);
     return;
   }
@@ -77,10 +77,10 @@ async function main() {
 main();
 
 process.on('SIGTERM', () => {
-  console.log('🛑 SIGTERM received, shutting down gracefully');
+  // console.log(' SIGTERM received, shutting down gracefully');
   if (server) {
     server.close(() => {
-      console.log('Process terminated');
+      // console.log('Process terminated');
       mongoose.connection.close(false).then(() => {
         process.exit(0);
       });

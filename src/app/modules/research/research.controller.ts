@@ -71,7 +71,7 @@ const getJobStatus = catchAsync(async (req: Request, res: Response) => {
 
 const getResearchHistory = catchAsync(async (req: Request, res: Response) => {
   const limit = parseInt(req.query.limit as string) || 10;
-  console.log("=== getResearchHistory req.user ===", req.user);
+  // console.log("=== getResearchHistory req.user ===", req.user);
   const userId = req.user?.userId;
 
   const result = await ResearchService.getResearchHistory(limit, userId);

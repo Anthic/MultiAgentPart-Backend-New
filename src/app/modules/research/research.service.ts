@@ -29,6 +29,7 @@ const startResearch = async (
     //check check
     const cached = await redis.get(researchKey(payload.topic));
     if (cached) {
+      try {
       const parsed = JSON.parse(cached) as IPythonJobResponse;
       // If it is cached and either done or still recently running, return it
       if (parsed.status === 'done' || parsed.status === 'running') {
@@ -50,6 +51,10 @@ const startResearch = async (
           });
         }
         return parsed;
+      }
+      } catch (error) {
+        console.error(`[Cache Error] Failed to parse cached research for topic "${payload.topic}". Evicting.`, error);
+        await redis.del(researchKey(payload.topic));
       }
     }
     //no cache then python call
@@ -89,7 +94,12 @@ const getJobStatus = async (jobId: string): Promise<IPythonJobResponse> => {
     // 1. Check short-term status cache in Redis first
     const cached = await redis.get(cacheKey);
     if (cached) {
-      return JSON.parse(cached);
+      try {
+        return JSON.parse(cached);
+      } catch (err) {
+        console.error(`[Cache Error] Failed to parse cached job status for "${jobId}". Evicting.`, err);
+        await redis.del(cacheKey); 
+      }
     }
 
     let res;
@@ -164,22 +174,30 @@ const getJobStatus = async (jobId: string): Promise<IPythonJobResponse> => {
     throw new ApiError(httpStatus.BAD_GATEWAY, message);
   }
 };
+
+
+
 const getResearchHistory = async (
   limit: number = 10,
   userId?: string,
 ): Promise<{ records: IPythonJobResponse[]; count: number }> => {
+  // Guard clause: enforce multi-tenant isolation
+  if (!userId) {
+    throw new ApiError(httpStatus.UNAUTHORIZED, 'User ID is required to fetch history');
+  }
+
   try {
-    const url = userId ? `/history?limit=${limit}&userId=${userId}&user_id=${userId}` : `/history?limit=${limit}`;
-    console.log("=== getResearchHistory Service Calling URL ===", url, "with userId =", userId);
+    // Query only the current user's history directly from the Python/Supabase DB
+    const url = `/history?limit=${limit}&user_id=${userId}`;
     const response = await pythonApiClient.get<{
       records: any[];
       count: number;
     }>(url);
 
-    // Map the database history records to IPythonJobResponse format so the Next.js frontend aligns perfectly
+    // Map database history records to IPythonJobResponse format
     const mapped: IPythonJobResponse[] = (response.data.records || []).map((rec: any) => ({
       job_id: rec.job_id || String(rec.id),
-      user_id: rec.user_id, // Map user_id!
+      user_id: rec.user_id,
       status: 'done' as const,
       progress: 100,
       stage: 'Complete',
@@ -198,17 +216,9 @@ const getResearchHistory = async (
       created_at: rec.created_at,
     }));
 
-    // Defensive Post-Filtering: Ensure we ONLY return the history of the logged-in user!
-    // This absolutely guarantees that Lynn Sanders only sees Lynn Sanders' history.
-    let filtered = mapped;
-    if (userId) {
-      filtered = mapped.filter((rec) => rec.user_id === userId);
-      console.log(`=== Post-filtered history records: before = ${mapped.length}, after = ${filtered.length} for userId = ${userId} ===`);
-    }
-
     return {
-      records: filtered,
-      count: filtered.length,
+      records: mapped,
+      count: mapped.length,
     };
   } catch (error: any) {
     const message =
@@ -218,6 +228,7 @@ const getResearchHistory = async (
     throw new ApiError(httpStatus.BAD_GATEWAY, message);
   }
 };
+
 const getHistoryById = async (id: string) => {
   try {
     const response = await pythonApiClient.get<any>(`/history/${id}`);
@@ -256,21 +267,37 @@ const getHistoryById = async (id: string) => {
 };
 
 const getCacheStats = async () => {
+  const cacheKey = 'stats_cache:python_api';
   try {
+    // 1. Check local Redis cache
+    const cached = await redis.get(cacheKey);
+    if (cached) return JSON.parse(cached);
+    // 2. Fetch fresh stats
     const response = await pythonApiClient.get('/cache/stats');
+    
+    // 3. Cache for 10 seconds
+    await redis.setex(cacheKey, 10, JSON.stringify(response.data));
     return response.data;
   } catch (error: any) {
     throw new ApiError(httpStatus.BAD_GATEWAY, 'Failed to fetch cache stats');
   }
 };
+
 const checkAgentHealth = async () => {
+  const cacheKey = 'health_cache:python_api';
   try {
+    const cached = await redis.get(cacheKey);
+    if (cached) return JSON.parse(cached);
     const response = await pythonApiClient.get('/health');
+    
+    // Cache health response for 5 seconds
+    await redis.setex(cacheKey, 5, JSON.stringify(response.data));
     return response.data;
   } catch (error: any) {
     throw new ApiError(httpStatus.SERVICE_UNAVAILABLE, 'Agent service is down');
   }
 };
+
 export const ResearchService = {
   startResearch,
   getJobStatus,

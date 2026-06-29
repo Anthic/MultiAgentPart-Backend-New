@@ -44,11 +44,19 @@ export const getResearchQuota = async (userId: string): Promise<ResearchQuota> =
 
 export const refundResearchQuota = async (userId: string): Promise<void> => {
   const key = researchQuotaKey(userId);
-  const current = parseInt((await redis.get(key)) ?? '0', 10);
-
-  if (current > 0) {
-    await redis.decr(key);
-  }
+  // Atomic Lua script ensures read-and-decrement occur in a single protected thread block
+  await redis.eval(
+    `
+    local current = tonumber(redis.call("GET", KEYS[1]) or "0")
+    if current > 0 then
+      return redis.call("DECR", KEYS[1])
+    else
+      return 0
+    end
+    `,
+    1,
+    key
+  );
 };
 
 export const apiRateLimiter = rateLimit({

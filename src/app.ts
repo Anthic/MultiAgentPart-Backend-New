@@ -10,6 +10,7 @@ import routes from './app/routes';
 import { apiRateLimiter, authRateLimiter } from './app/middlewares/rateLimiter';
 import config from './config';
 import { createCsrfTokenForRequest, setCsrfToken, verifyCsrf } from './app/middlewares/csrf.middleware';
+import compression from 'compression';
 
 const app: Application = express();
 
@@ -45,6 +46,7 @@ app.use(
     credentials: true,
   }),
 );
+app.use(compression());
 app.use(cookieParser());
 
 // CSRF bootstrap — sets csrf_token cookie on GET requests (used by same-origin clients)
