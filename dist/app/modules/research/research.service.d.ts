@@ -6,7 +6,7 @@ export declare const ResearchService: {
         records: IPythonJobResponse[];
         count: number;
     }>;
-    getHistoryById: (id: string) => Promise<{
+    getHistoryById: (id: string, userId?: string) => Promise<{
         job_id: any;
         status: "done";
         progress: number;

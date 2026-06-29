@@ -35,10 +35,14 @@ const getResearchQuota = async (userId) => {
 exports.getResearchQuota = getResearchQuota;
 const refundResearchQuota = async (userId) => {
     const key = researchQuotaKey(userId);
-    const current = parseInt((await redis_1.redis.get(key)) ?? '0', 10);
-    if (current > 0) {
-        await redis_1.redis.decr(key);
-    }
+    await redis_1.redis.eval(`
+    local current = tonumber(redis.call("GET", KEYS[1]) or "0")
+    if current > 0 then
+      return redis.call("DECR", KEYS[1])
+    else
+      return 0
+    end
+    `, 1, key);
 };
 exports.refundResearchQuota = refundResearchQuota;
 exports.apiRateLimiter = (0, express_rate_limit_1.default)({

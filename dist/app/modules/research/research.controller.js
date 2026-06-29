@@ -61,7 +61,6 @@ const getJobStatus = (0, catchAsync_1.default)(async (req, res) => {
 });
 const getResearchHistory = (0, catchAsync_1.default)(async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
-    console.log("=== getResearchHistory req.user ===", req.user);
     const userId = req.user?.userId;
     const result = await research_service_1.ResearchService.getResearchHistory(limit, userId);
     (0, sendResponse_1.default)(res, {
@@ -72,7 +71,8 @@ const getResearchHistory = (0, catchAsync_1.default)(async (req, res) => {
     });
 });
 const getHistoryById = (0, catchAsync_1.default)(async (req, res) => {
-    const result = await research_service_1.ResearchService.getHistoryById(req.params.id);
+    const userId = req.user?.userId;
+    const result = await research_service_1.ResearchService.getHistoryById(req.params.id, userId);
     (0, sendResponse_1.default)(res, { statusCode: http_status_1.default.OK, success: true, data: result });
 });
 const getCacheStats = (0, catchAsync_1.default)(async (_req, res) => {

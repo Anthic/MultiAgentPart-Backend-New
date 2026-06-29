@@ -18,13 +18,16 @@ const createUserByAdmin = (0, catchAsync_1.default)(async (req, res) => {
         data: result,
     });
 });
-const getAllUsers = (0, catchAsync_1.default)(async (_req, res) => {
-    const result = await user_service_1.UserService.getAllUsers();
+const getAllUsers = (0, catchAsync_1.default)(async (req, res) => {
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 10;
+    const { data, meta } = await user_service_1.UserService.getAllUsers(page, limit);
     (0, sendResponse_1.default)(res, {
         statusCode: http_status_1.default.OK,
         success: true,
         message: 'Users retrieved successfully',
-        data: result,
+        meta,
+        data,
     });
 });
 const getUserById = (0, catchAsync_1.default)(async (req, res) => {

@@ -15,6 +15,7 @@ const routes_1 = __importDefault(require("./app/routes"));
 const rateLimiter_1 = require("./app/middlewares/rateLimiter");
 const config_1 = __importDefault(require("./config"));
 const csrf_middleware_1 = require("./app/middlewares/csrf.middleware");
+const compression_1 = __importDefault(require("compression"));
 const app = (0, express_1.default)();
 app.set('trust proxy', 1);
 app.use((req, _res, next) => {
@@ -40,6 +41,7 @@ app.use((0, cors_1.default)({
     origin: config_1.default.cors_origin ? config_1.default.cors_origin.split(',').map((origin) => origin.trim()) : true,
     credentials: true,
 }));
+app.use((0, compression_1.default)());
 app.use((0, cookie_parser_1.default)());
 app.use(csrf_middleware_1.setCsrfToken);
 app.get('/api/v1/csrf-token', (req, res) => {

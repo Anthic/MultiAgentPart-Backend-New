@@ -18,25 +18,31 @@ const startResearch = async (payload, userId) => {
     try {
         const cached = await redis_1.redis.get(researchKey(payload.topic));
         if (cached) {
-            const parsed = JSON.parse(cached);
-            if (parsed.status === 'done' || parsed.status === 'running') {
-                if (userId && parsed.result && parsed.status === 'done') {
-                    const jobResult = parsed.result;
-                    axiosClient_1.pythonApiClient.post('/history', {
-                        job_id: parsed.job_id || crypto_1.default.randomUUID().substring(0, 12),
-                        user_id: userId,
-                        topic: jobResult.topic || payload.topic,
-                        report: jobResult.report || '',
-                        critique: jobResult.critique || '',
-                        score: jobResult.critique_score || 0,
-                        fact_score: jobResult.fact_check_score || 0,
-                        urls: jobResult.verified_urls || [],
-                        time_sec: jobResult.time_sec || 0,
-                    }).catch((err) => {
-                        console.error('Failed to save cached job to history:', err.message);
-                    });
+            try {
+                const parsed = JSON.parse(cached);
+                if (parsed.status === 'done' || parsed.status === 'running') {
+                    if (userId && parsed.result && parsed.status === 'done') {
+                        const jobResult = parsed.result;
+                        axiosClient_1.pythonApiClient.post('/history', {
+                            job_id: parsed.job_id || crypto_1.default.randomUUID().substring(0, 12),
+                            user_id: userId,
+                            topic: jobResult.topic || payload.topic,
+                            report: jobResult.report || '',
+                            critique: jobResult.critique || '',
+                            score: jobResult.critique_score || 0,
+                            fact_score: jobResult.fact_check_score || 0,
+                            urls: jobResult.verified_urls || [],
+                            time_sec: jobResult.time_sec || 0,
+                        }).catch((err) => {
+                            console.error('Failed to save cached job to history:', err.message);
+                        });
+                    }
+                    return parsed;
                 }
-                return parsed;
+            }
+            catch (error) {
+                console.error(`[Cache Error] Failed to parse cached research for topic "${payload.topic}". Evicting.`, error);
+                await redis_1.redis.del(researchKey(payload.topic));
             }
         }
         const response = await axiosClient_1.pythonApiClient.post('/research', { topic: payload.topic, user_id: userId });
@@ -57,7 +63,13 @@ const getJobStatus = async (jobId) => {
         const cacheKey = `job_status_cache:${jobId}`;
         const cached = await redis_1.redis.get(cacheKey);
         if (cached) {
-            return JSON.parse(cached);
+            try {
+                return JSON.parse(cached);
+            }
+            catch (err) {
+                console.error(`[Cache Error] Failed to parse cached job status for "${jobId}". Evicting.`, err);
+                await redis_1.redis.del(cacheKey);
+            }
         }
         let res;
         try {
@@ -123,9 +135,11 @@ const getJobStatus = async (jobId) => {
     }
 };
 const getResearchHistory = async (limit = 10, userId) => {
+    if (!userId) {
+        throw new ApiError_1.default(http_status_1.default.UNAUTHORIZED, 'User ID is required to fetch history');
+    }
     try {
-        const url = userId ? `/history?limit=${limit}&userId=${userId}&user_id=${userId}` : `/history?limit=${limit}`;
-        console.log("=== getResearchHistory Service Calling URL ===", url, "with userId =", userId);
+        const url = `/history?limit=${limit}&user_id=${userId}`;
         const response = await axiosClient_1.pythonApiClient.get(url);
         const mapped = (response.data.records || []).map((rec) => ({
             job_id: rec.job_id || String(rec.id),
@@ -147,14 +161,9 @@ const getResearchHistory = async (limit = 10, userId) => {
             error: null,
             created_at: rec.created_at,
         }));
-        let filtered = mapped;
-        if (userId) {
-            filtered = mapped.filter((rec) => rec.user_id === userId);
-            console.log(`=== Post-filtered history records: before = ${mapped.length}, after = ${filtered.length} for userId = ${userId} ===`);
-        }
         return {
-            records: filtered,
-            count: filtered.length,
+            records: mapped,
+            count: mapped.length,
         };
     }
     catch (error) {
@@ -164,12 +173,15 @@ const getResearchHistory = async (limit = 10, userId) => {
         throw new ApiError_1.default(http_status_1.default.BAD_GATEWAY, message);
     }
 };
-const getHistoryById = async (id) => {
+const getHistoryById = async (id, userId) => {
     try {
         const response = await axiosClient_1.pythonApiClient.get(`/history/${id}`);
         const dbRec = response.data;
         if (!dbRec) {
             throw new ApiError_1.default(http_status_1.default.NOT_FOUND, 'History record not found');
+        }
+        if (userId && dbRec.user_id && dbRec.user_id !== userId) {
+            throw new ApiError_1.default(http_status_1.default.FORBIDDEN, 'Access denied: You do not own this research history record');
         }
         return {
             job_id: dbRec.job_id || String(dbRec.id),
@@ -192,14 +204,21 @@ const getHistoryById = async (id) => {
         };
     }
     catch (error) {
+        if (error.statusCode === 403 || error.status === 403)
+            throw error;
         if (error.response?.status === 404 || error.statusCode === 404)
             throw new ApiError_1.default(http_status_1.default.NOT_FOUND, 'History record not found');
         throw new ApiError_1.default(http_status_1.default.BAD_GATEWAY, 'Failed to fetch history record');
     }
 };
 const getCacheStats = async () => {
+    const cacheKey = 'stats_cache:python_api';
     try {
+        const cached = await redis_1.redis.get(cacheKey);
+        if (cached)
+            return JSON.parse(cached);
         const response = await axiosClient_1.pythonApiClient.get('/cache/stats');
+        await redis_1.redis.setex(cacheKey, 10, JSON.stringify(response.data));
         return response.data;
     }
     catch (error) {
@@ -207,8 +226,13 @@ const getCacheStats = async () => {
     }
 };
 const checkAgentHealth = async () => {
+    const cacheKey = 'health_cache:python_api';
     try {
+        const cached = await redis_1.redis.get(cacheKey);
+        if (cached)
+            return JSON.parse(cached);
         const response = await axiosClient_1.pythonApiClient.get('/health');
+        await redis_1.redis.setex(cacheKey, 5, JSON.stringify(response.data));
         return response.data;
     }
     catch (error) {

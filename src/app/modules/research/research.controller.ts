@@ -85,7 +85,8 @@ const getResearchHistory = catchAsync(async (req: Request, res: Response) => {
 });
 
 const getHistoryById = catchAsync(async (req: Request, res: Response) => {
-  const result = await ResearchService.getHistoryById(req.params.id as string);
+  const userId = req.user?.userId;
+  const result = await ResearchService.getHistoryById(req.params.id as string, userId);
   sendResponse(res, { statusCode: httpStatus.OK, success: true, data: result });
 });
 const getCacheStats = catchAsync(async (_req: Request, res: Response) => {

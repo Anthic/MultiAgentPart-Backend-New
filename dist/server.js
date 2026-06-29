@@ -7,6 +7,7 @@ const mongoose_1 = __importDefault(require("mongoose"));
 const app_1 = __importDefault(require("./app"));
 const config_1 = __importDefault(require("./config"));
 let server;
+const isServerless = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
 async function connectDB() {
     if (global._mongooseConnection) {
         if (mongoose_1.default.connection.readyState === 1) {
@@ -16,17 +17,16 @@ async function connectDB() {
     }
     const dbUrl = config_1.default.database_url;
     if (!dbUrl) {
-        throw new Error('❌ DATABASE_URL is not defined. Check your environment variables in Vercel dashboard.');
+        throw new Error(' DATABASE_URL is not defined. Check your environment variables in Vercel dashboard.');
     }
     await mongoose_1.default.connect(dbUrl, {
         serverSelectionTimeoutMS: 10000,
         socketTimeoutMS: 45000,
-        maxPoolSize: 10,
-        minPoolSize: 5,
+        maxPoolSize: isServerless ? 3 : 50,
+        minPoolSize: isServerless ? 1 : 10,
         retryWrites: true,
     });
     global._mongooseConnection = mongoose_1.default;
-    console.log('🛢 Database is connected successfully');
 }
 process.on('uncaughtException', (error) => {
     console.error(' Uncaught Exception detected, shutting down...', error);
@@ -41,7 +41,6 @@ async function main() {
     }
     catch (err) {
         console.error(' Database connection failed:', err);
-        console.log(' Retrying in 5 seconds...');
         setTimeout(main, 5000);
         return;
     }
@@ -59,10 +58,8 @@ async function main() {
 }
 main();
 process.on('SIGTERM', () => {
-    console.log('🛑 SIGTERM received, shutting down gracefully');
     if (server) {
         server.close(() => {
-            console.log('Process terminated');
             mongoose_1.default.connection.close(false).then(() => {
                 process.exit(0);
             });

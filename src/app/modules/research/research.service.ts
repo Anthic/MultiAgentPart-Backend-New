@@ -229,12 +229,16 @@ const getResearchHistory = async (
   }
 };
 
-const getHistoryById = async (id: string) => {
+const getHistoryById = async (id: string, userId?: string) => {
   try {
     const response = await pythonApiClient.get<any>(`/history/${id}`);
     const dbRec = response.data;
     if (!dbRec) {
       throw new ApiError(httpStatus.NOT_FOUND, 'History record not found');
+    }
+    // Guard clause: enforce multi-tenant isolation
+    if (userId && dbRec.user_id && dbRec.user_id !== userId) {
+      throw new ApiError(httpStatus.FORBIDDEN, 'Access denied: You do not own this research history record');
     }
     // Return mapped format for individual history lookups as well
     return {
@@ -257,6 +261,7 @@ const getHistoryById = async (id: string) => {
       created_at: dbRec.created_at,
     };
   } catch (error: any) {
+    if (error.statusCode === 403 || error.status === 403) throw error;
     if (error.response?.status === 404 || error.statusCode === 404)
       throw new ApiError(httpStatus.NOT_FOUND, 'History record not found');
     throw new ApiError(

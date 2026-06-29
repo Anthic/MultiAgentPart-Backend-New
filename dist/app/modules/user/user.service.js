@@ -30,9 +30,20 @@ const createUserByAdmin = async (payload) => {
     });
     return createdUser.toObject();
 };
-const getAllUsers = async () => {
-    const users = await user_model_1.User.find();
-    return users;
+const getAllUsers = async (page = 1, limit = 10) => {
+    const skip = (page - 1) * limit;
+    const [users, total] = await Promise.all([
+        user_model_1.User.find().skip(skip).limit(limit),
+        user_model_1.User.countDocuments(),
+    ]);
+    return {
+        data: users,
+        meta: {
+            page,
+            limit,
+            total,
+        },
+    };
 };
 const getUserById = async (userId) => {
     const user = (await user_model_1.User.findOne({ id: userId }));
