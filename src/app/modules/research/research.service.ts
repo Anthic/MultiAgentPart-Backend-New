@@ -15,8 +15,8 @@ const JOB_TOPIC_TTL = 60 * 60 * 2;
 const normalizeTopic = (topic: string): string =>
   topic.toLocaleLowerCase().trim().replace(/\s+/g, ' ');
 
-const researchKey = (topic: string): string =>
-  `research:${crypto.createHash('md5').update(normalizeTopic(topic)).digest('hex')}`;
+const researchKey = (topic: string, mode: string = 'deep'): string =>
+  `research:${crypto.createHash('md5').update(`${normalizeTopic(topic)}:${mode}`).digest('hex')}`;
 
 const jobTopicKey = (jobId: string): string => `job:${jobId}`;
 
@@ -25,9 +25,10 @@ const startResearch = async (
   payload: IResearchStartRequest,
   userId?: string,
 ): Promise<IPythonJobResponse> => {
+  const mode = payload.mode || 'deep';
   try {
     //check check
-    const cached = await redis.get(researchKey(payload.topic));
+    const cached = await redis.get(researchKey(payload.topic, mode));
     if (cached) {
       try {
       const parsed = JSON.parse(cached) as IPythonJobResponse;
@@ -54,19 +55,19 @@ const startResearch = async (
       }
       } catch (error) {
         console.error(`[Cache Error] Failed to parse cached research for topic "${payload.topic}". Evicting.`, error);
-        await redis.del(researchKey(payload.topic));
+        await redis.del(researchKey(payload.topic, mode));
       }
     }
     //no cache then python call
     const response = await pythonApiClient.post<IPythonJobResponse>(
       '/research',
-      { topic: payload.topic, user_id: userId },
+      { topic: payload.topic, user_id: userId, mode },
     );
 
     // If it's done, cache for 24h. If it's running, cache for only 5m to avoid lockouts.
     const ttl = response.data.status === 'done' ? RESEARCH_CACHE_TTL : 300;
     await redis.setex(
-      researchKey(payload.topic),
+      researchKey(payload.topic, mode),
       ttl,
       JSON.stringify(response.data),
     );

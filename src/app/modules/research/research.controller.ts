@@ -13,7 +13,7 @@ import { AuthenticatedRequest } from '../../interfaces/auth';
 import { WalletService } from '../wallet/wallet.service';
 const startResearch = catchAsync(async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest
-  const { topic } = req.body as IResearchStartRequest;
+  const { topic, mode } = req.body as IResearchStartRequest;
   const userId = authReq.user?.userId;
 
   if (!userId) {
@@ -34,7 +34,7 @@ const startResearch = catchAsync(async (req: Request, res: Response) => {
 
   let result: IPythonJobResponse;
   try {
-    result = await ResearchService.startResearch({ topic }, userId);
+    result = await ResearchService.startResearch({ topic, mode }, userId);
   } catch (error) {
  
     if (authReq.isFreeRequest) {

@@ -13,7 +13,7 @@ const rateLimiter_1 = require("../../middlewares/rateLimiter");
 const wallet_service_1 = require("../wallet/wallet.service");
 const startResearch = (0, catchAsync_1.default)(async (req, res) => {
     const authReq = req;
-    const { topic } = req.body;
+    const { topic, mode } = req.body;
     const userId = authReq.user?.userId;
     if (!userId) {
         throw new ApiError_1.default(http_status_1.default.UNAUTHORIZED, 'Unauthorized');
@@ -32,7 +32,7 @@ const startResearch = (0, catchAsync_1.default)(async (req, res) => {
     }
     let result;
     try {
-        result = await research_service_1.ResearchService.startResearch({ topic }, userId);
+        result = await research_service_1.ResearchService.startResearch({ topic, mode }, userId);
     }
     catch (error) {
         if (authReq.isFreeRequest) {

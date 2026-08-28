@@ -22,4 +22,5 @@ export interface IPythonJobResponse {
 }
 export interface IResearchStartRequest {
     topic: string;
+    mode?: 'fast' | 'deep';
 }
