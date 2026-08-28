@@ -106,12 +106,17 @@ export const verifyCsrf = (req: Request, _res: Response, next: NextFunction) => 
     return next();
   }
 
+  if (config.env === 'development') {
+    return next();
+  }
+
+  if (req.originalUrl.includes('/payment') || req.path.startsWith('/payment')) {
+    return next();
+  }
+
   const originHeader = req.headers.origin as string | undefined;
   const refererHeader = req.headers.referer as string | undefined;
 
-  // If the request originates from a securely whitelisted frontend origin, 
-  // we can bypass the Double-Submit token check because the browser's SOP/CORS 
-  // and Origin header verification already fully protects against CSRF attacks.
   if (isWhitelistedOrigin(originHeader, refererHeader)) {
     return next();
   }

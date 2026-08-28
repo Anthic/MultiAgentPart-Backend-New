@@ -1,45 +1,42 @@
 import express, { Application, NextFunction, Request, Response } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
-import   httpStatus  from 'http-status';
-import helmet from 'helmet';
+import httpStatus from 'http-status';
 import mongoSanitize from 'express-mongo-sanitize';
-import { sanitizeMiddleware } from './app/middlewares/sanitize.middleware';
-import globalErrorHandler from './app/middlewares/globalErrorHandler';
-import routes from './app/routes';
-import { apiRateLimiter, authRateLimiter } from './app/middlewares/rateLimiter';
-import config from './config';
-import { createCsrfTokenForRequest, setCsrfToken, verifyCsrf } from './app/middlewares/csrf.middleware';
 import compression from 'compression';
+
+import config from './config';
+import routes from './app/routes';
+import globalErrorHandler from './app/middlewares/globalErrorHandler';
+import { apiRateLimiter, authRateLimiter } from './app/middlewares/rateLimiter';
+import { sanitizeMiddleware } from './app/middlewares/sanitize.middleware';
+import { securityHeaders } from './app/middlewares/security.middleware';
+import { requestIdMiddleware } from './app/middlewares/requestId.middleware';
+import { createCsrfTokenForRequest, setCsrfToken, verifyCsrf } from './app/middlewares/csrf.middleware';
 
 const app: Application = express();
 
 app.set('trust proxy', 1);
 
-// Express 5 Compatibility: Make req.query and req.params writable
+
+app.use(requestIdMiddleware);
+
+
+app.use(securityHeaders);
+
+
 app.use((req: Request, _res: Response, next: NextFunction) => {
   const query = req.query;
   const params = req.params;
-  Object.defineProperty(req, 'query', {
-    value: query,
-    writable: true,
-    enumerable: true,
-    configurable: true,
-  });
-  Object.defineProperty(req, 'params', {
-    value: params,
-    writable: true,
-    enumerable: true,
-    configurable: true,
-  });
+  Object.defineProperty(req, 'query', { value: query, writable: true, enumerable: true, configurable: true });
+  Object.defineProperty(req, 'params', { value: params, writable: true, enumerable: true, configurable: true });
   next();
 });
 
-// Parser
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Middlewares
+
 app.use(
   cors({
     origin: config.cors_origin ? config.cors_origin.split(',').map((origin) => origin.trim()) : true,
@@ -49,12 +46,14 @@ app.use(
 app.use(compression());
 app.use(cookieParser());
 
-// CSRF bootstrap — sets csrf_token cookie on GET requests (used by same-origin clients)
-app.use(setCsrfToken)
 
+app.use(mongoSanitize());
+app.use(sanitizeMiddleware);
+
+
+app.use(setCsrfToken);
 app.get('/api/v1/csrf-token', (req: Request, res: Response) => {
   const token = createCsrfTokenForRequest(req, res);
-
   res.status(httpStatus.OK).json({
     statusCode: httpStatus.OK,
     success: true,
@@ -62,38 +61,34 @@ app.get('/api/v1/csrf-token', (req: Request, res: Response) => {
     data: { csrfToken: token },
   });
 });
-
 app.use(verifyCsrf);
 
-app.use(helmet());
-app.use(mongoSanitize());
-app.use(sanitizeMiddleware);
+
 app.use(apiRateLimiter);
 
-// Application Routes
+
 app.use('/api/v1/auth', authRateLimiter);
 app.use('/api/v1', routes);
 
-// Testing route
+
 app.get('/', (_req: Request, res: Response) => {
-  res.send('MultiAgent backend is running!');
+  res.status(httpStatus.OK).json({
+    success: true,
+    message: 'AtlashAI Multi-Agent API Engine is active and healthy',
+    timestamp: new Date().toISOString(),
+  });
 });
 
-// Global error handler
+
 app.use(globalErrorHandler);
 
-// Handle not found routes
-app.use((req: Request, res: Response, _next: NextFunction) => {
+
+app.use((req: Request, res: Response) => {
   res.status(httpStatus.NOT_FOUND).json({
     statusCode: httpStatus.NOT_FOUND,
     success: false,
-    message: 'Not Found',
-    errorMessages: [
-      {
-        path: req.originalUrl,
-        message: 'API Not Found',
-      },
-    ],
+    message: 'API Route Not Found',
+    errorMessages: [{ path: req.originalUrl, message: `Route ${req.method} ${req.originalUrl} does not exist` }],
   });
 });
 

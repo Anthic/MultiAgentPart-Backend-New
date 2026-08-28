@@ -7,13 +7,15 @@ exports.aiRequestLimiter = exports.authRateLimiter = exports.apiRateLimiter = ex
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const config_1 = __importDefault(require("../../config"));
 const redis_1 = require("../../config/redis");
+const wallet_model_1 = require("../modules/wallet/wallet.model");
 const toNumber = (value, fallback) => {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : fallback;
 };
 const windowMs = toNumber(config_1.default.rate_limit_window_ms, 15 * 60 * 1000);
 const maxRequests = toNumber(config_1.default.rate_limit_max, 100);
-const researchDailyLimit = toNumber(config_1.default.research_daily_limit, 3);
+const FREE_DAILY_RESEARCH_LIMIT = 1;
+const RESEARCH_COST_BDT = 10.0;
 const researchQuotaTtlSeconds = 24 * 60 * 60;
 const researchQuotaKey = (userId) => `research_quota:${userId}`;
 const getResetAt = (ttlSeconds) => {
@@ -24,11 +26,11 @@ const getResetAt = (ttlSeconds) => {
 const getResearchQuota = async (userId) => {
     const key = researchQuotaKey(userId);
     const [current, ttl] = await Promise.all([redis_1.redis.get(key), redis_1.redis.ttl(key)]);
-    const used = Math.min(parseInt(current ?? '0', 10), researchDailyLimit);
+    const used = Math.min(parseInt(current ?? '0', 10), FREE_DAILY_RESEARCH_LIMIT);
     return {
-        limit: researchDailyLimit,
+        limit: FREE_DAILY_RESEARCH_LIMIT,
         used,
-        remaining: Math.max(researchDailyLimit - used, 0),
+        remaining: Math.max(FREE_DAILY_RESEARCH_LIMIT - used, 0),
         resetAt: getResetAt(ttl),
     };
 };
@@ -73,41 +75,43 @@ const aiRequestLimiter = async (req, res, next) => {
     try {
         const userId = req.user.userId;
         const key = researchQuotaKey(userId);
-        const result = (await redis_1.redis.eval(`
-      local current = tonumber(redis.call("GET", KEYS[1]) or "0")
-      local limit = tonumber(ARGV[1])
-      local ttl = tonumber(ARGV[2])
-
-      if current >= limit then
-        return {0, current, redis.call("TTL", KEYS[1])}
-      end
-
-      current = redis.call("INCR", KEYS[1])
-      if current == 1 then
-        redis.call("EXPIRE", KEYS[1], ttl)
-      end
-
-      return {1, current, redis.call("TTL", KEYS[1])}
-      `, 1, key, researchDailyLimit, researchQuotaTtlSeconds));
-        const [allowed, rawUsed, ttl] = result;
-        const used = Math.min(Number(rawUsed), researchDailyLimit);
+        const currentUsageStr = await redis_1.redis.get(key);
+        const ttl = await redis_1.redis.ttl(key);
+        const currentUsage = parseInt(currentUsageStr || '0', 10);
         const quota = {
-            limit: researchDailyLimit,
-            used,
-            remaining: Math.max(researchDailyLimit - used, 0),
+            limit: FREE_DAILY_RESEARCH_LIMIT,
+            used: Math.min(currentUsage, FREE_DAILY_RESEARCH_LIMIT),
+            remaining: Math.max(FREE_DAILY_RESEARCH_LIMIT - currentUsage, 0),
             resetAt: getResetAt(Number(ttl)),
         };
-        if (!allowed) {
-            res.status(429).json({
-                statusCode: 429,
-                success: false,
-                message: 'Daily research limit reached. Try again after the quota resets.',
-                data: { quota },
-            });
-            return;
+        if (currentUsage < FREE_DAILY_RESEARCH_LIMIT) {
+            await redis_1.redis.incr(key);
+            if (currentUsage === 0) {
+                await redis_1.redis.expire(key, researchQuotaTtlSeconds);
+            }
+            req.isFreeRequest = true;
+            req.researchQuota = quota;
+            return next();
         }
-        req.researchQuota = quota;
-        next();
+        const wallet = await wallet_model_1.Wallet.findOne({ userId });
+        const userBalance = wallet?.balanceBDT || 0;
+        if (wallet && userBalance >= RESEARCH_COST_BDT) {
+            req.isFreeRequest = false;
+            req.chargeAmountBDT = RESEARCH_COST_BDT;
+            req.researchQuota = quota;
+            return next();
+        }
+        res.status(402).json({
+            statusCode: 402,
+            success: false,
+            message: `Daily free trial limit (1/1) reached. Additional searches cost ৳${RESEARCH_COST_BDT}. Your balance: ৳${userBalance.toFixed(2)}. Please recharge via bKash/Nagad to continue.`,
+            data: {
+                quota,
+                walletBalanceBDT: userBalance,
+                requiredBDT: RESEARCH_COST_BDT,
+            },
+        });
+        return;
     }
     catch (error) {
         console.error('Rate limiter error:', error);

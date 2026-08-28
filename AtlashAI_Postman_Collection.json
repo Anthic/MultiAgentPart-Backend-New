@@ -1,0 +1,504 @@
+{
+  "info": {
+    "name": "AtlashAI Multi-Agent API Collection",
+    "description": "Complete API Collection for AtlashAI Multi-Agent Research Platform with SSLCommerz, Wallet Billing, Papers Studio, Smart Notes, and AI Agents.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5000/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "python_agent_url",
+      "value": "https://api-atlash.duckdns.org",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "YOUR_JWT_ACCESS_TOKEN_HERE",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Authentication & Users",
+      "item": [
+        {
+          "name": "Register User",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Anthi Kumar\",\n  \"email\": \"anthi@example.com\",\n  \"password\": \"Password123!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "Login User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.accessToken) {",
+                  "    pm.collectionVariables.set('token', jsonData.data.accessToken);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"anthi@example.com\",\n  \"password\": \"Password123!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Get My Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/users/profile",
+              "host": ["{{base_url}}"],
+              "path": ["users", "profile"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Wallet & Token Billing",
+      "item": [
+        {
+          "name": "Get Wallet Balance",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/wallet/balance",
+              "host": ["{{base_url}}"],
+              "path": ["wallet", "balance"]
+            }
+          }
+        },
+        {
+          "name": "Get Token Audit Logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/wallet/logs?limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["wallet", "logs"],
+              "query": [
+                { "key": "limit", "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Dev Direct Add Funds",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amountBDT\": 50\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/wallet/add-funds",
+              "host": ["{{base_url}}"],
+              "path": ["wallet", "add-funds"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. SSLCommerz Payment Gateway",
+      "item": [
+        {
+          "name": "Init bKash/Nagad Recharge",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amountBDT\": 100,\n  \"paymentType\": \"wallet_topup\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/payment/init-recharge",
+              "host": ["{{base_url}}"],
+              "path": ["payment", "init-recharge"]
+            }
+          }
+        },
+        {
+          "name": "Payment IPN Validator",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "application/json": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"val_id\": \"260828120000000000\",\n  \"tran_id\": \"ATLaSH_1787820000_1234\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/payment/ipn",
+              "host": ["{{base_url}}"],
+              "path": ["payment", "ipn"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Deep Research Engine",
+      "item": [
+        {
+          "name": "Start Deep Research (1st Free, 2nd ৳10)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"topic\": \"Recent Advances in Solid State Lithium Batteries 2024\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/research/start",
+              "host": ["{{base_url}}"],
+              "path": ["research", "start"]
+            }
+          }
+        },
+        {
+          "name": "Get Research Daily Quota",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/research/quota",
+              "host": ["{{base_url}}"],
+              "path": ["research", "quota"]
+            }
+          }
+        },
+        {
+          "name": "Get Job Status by JobID",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/research/job/PASTE_JOB_ID_HERE",
+              "host": ["{{base_url}}"],
+              "path": ["research", "job", "PASTE_JOB_ID_HERE"]
+            }
+          }
+        },
+        {
+          "name": "Get Research History",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/research/history?limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["research", "history"],
+              "query": [
+                { "key": "limit", "value": "10" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Check Agent Health",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/research/agent-health",
+              "host": ["{{base_url}}"],
+              "path": ["research", "agent-health"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Paper Studio",
+      "item": [
+        {
+          "name": "Create New Paper",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Solid State Batteries: A Comparative Review\",\n  \"abstract\": \"This paper reviews solid state lithium battery technologies.\",\n  \"content\": \"# Introduction\\nSolid state batteries offer higher energy density...\",\n  \"tags\": [\"battery\", \"energy\", \"materials\"]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/papers",
+              "host": ["{{base_url}}"],
+              "path": ["papers"]
+            }
+          }
+        },
+        {
+          "name": "Get All Papers",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/papers",
+              "host": ["{{base_url}}"],
+              "path": ["papers"]
+            }
+          }
+        },
+        {
+          "name": "Get Paper By ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/papers/PASTE_PAPER_ID_HERE",
+              "host": ["{{base_url}}"],
+              "path": ["papers", "PASTE_PAPER_ID_HERE"]
+            }
+          }
+        },
+        {
+          "name": "Update Paper Content",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Updated Solid State Battery Review\",\n  \"content\": \"# Updated Introduction\\nNew findings in electrolyte safety...\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/papers/PASTE_PAPER_ID_HERE",
+              "host": ["{{base_url}}"],
+              "path": ["papers", "PASTE_PAPER_ID_HERE"]
+            }
+          }
+        },
+        {
+          "name": "Delete Paper",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/papers/PASTE_PAPER_ID_HERE",
+              "host": ["{{base_url}}"],
+              "path": ["papers", "PASTE_PAPER_ID_HERE"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Smart Notes Vault",
+      "item": [
+        {
+          "name": "Create Note",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Electrolyte Conductivity Note\",\n  \"content\": \"Solid polymer electrolytes show 10^-4 S/cm conductivity at 60C.\",\n  \"tags\": [\"electrolyte\", \"conductivity\"]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/notes",
+              "host": ["{{base_url}}"],
+              "path": ["notes"]
+            }
+          }
+        },
+        {
+          "name": "Get All Notes",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notes",
+              "host": ["{{base_url}}"],
+              "path": ["notes"]
+            }
+          }
+        },
+        {
+          "name": "Delete Note",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notes/PASTE_NOTE_ID_HERE",
+              "host": ["{{base_url}}"],
+              "path": ["notes", "PASTE_NOTE_ID_HERE"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. AI Academic Microservices (Python Cloud API)",
+      "item": [
+        {
+          "name": "4-Mode Academic Paraphraser",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Our system uses multiple AI models to do research fast and accurately.\",\n  \"mode\": \"academic\",\n  \"user_id\": \"user_123\"\n}"
+            },
+            "url": {
+              "raw": "{{python_agent_url}}/api/v1/paraphrase",
+              "host": ["{{python_agent_url}}"],
+              "path": ["api", "v1", "paraphrase"]
+            }
+          }
+        },
+        {
+          "name": "Literature Gap Finder Matrix",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"topic\": \"Solid-State Lithium Batteries for High-Altitude Drones\",\n  \"user_id\": \"user_123\"\n}"
+            },
+            "url": {
+              "raw": "{{python_agent_url}}/api/v1/academic/gap-finder",
+              "host": ["{{python_agent_url}}"],
+              "path": ["api", "v1", "academic", "gap-finder"]
+            }
+          }
+        },
+        {
+          "name": "Simulated 3-Agent Peer Review Panel",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"High-Performance Solid State Batteries\",\n  \"paper_content\": \"We propose a novel sulfide electrolyte with high ionic conductivity at room temperature...\",\n  \"user_id\": \"user_123\"\n}"
+            },
+            "url": {
+              "raw": "{{python_agent_url}}/api/v1/academic/peer-review",
+              "host": ["{{python_agent_url}}"],
+              "path": ["api", "v1", "academic", "peer-review"]
+            }
+          }
+        },
+        {
+          "name": "One-Click Marp Slide Deck Generator",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paper_title\": \"Solid-State Lithium Battery Breakthroughs\",\n  \"paper_summary\": \"Overview of 2024 solid-state battery progress, solid electrolytes, ionic conductivity, and manufacturing challenges.\",\n  \"slide_count\": 8,\n  \"user_id\": \"user_123\"\n}"
+            },
+            "url": {
+              "raw": "{{python_agent_url}}/api/v1/academic/generate-slides",
+              "host": ["{{python_agent_url}}"],
+              "path": ["api", "v1", "academic", "generate-slides"]
+            }
+          }
+        },
+        {
+          "name": "Smart Notes Vault RAG Drafter",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"section_title\": \"Electrolyte Conductivity Analysis\",\n  \"paper_context\": \"Solid state battery safety and performance metrics.\",\n  \"user_id\": \"user_123\"\n}"
+            },
+            "url": {
+              "raw": "{{python_agent_url}}/api/v1/vault/draft-section",
+              "host": ["{{python_agent_url}}"],
+              "path": ["api", "v1", "vault", "draft-section"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

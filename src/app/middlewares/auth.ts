@@ -5,50 +5,45 @@ import config from '../../config';
 import { jwtHelpers } from '../helpers/jwtHelpers';
 import { authCookieNames } from '../constants/auth';
 import { Role } from '../constants/role';
+import { redis } from '../../config/redis';
 
-const authenticate = (
+const authenticate = async (
   req: Request,
   _res: Response,
   next: NextFunction,
-): void => {
-  // 1. Read access token from cookie first
+): Promise<void> => {
+
   let token = req.cookies?.[authCookieNames.accessToken];
 
-  // 2. Fallback to Authorization header
   if (!token && req.headers.authorization?.startsWith('Bearer ')) {
     token = req.headers.authorization.split(' ')[1];
   }
-
-  // 3. If no token found anywhere
   if (!token) {
     throw new ApiError(httpStatus.UNAUTHORIZED, 'Authentication required');
   }
-
   try {
-    // 4. Verify token
+ 
+    const isBlacklisted = await redis.get(`token_blacklist:${token}`);
+    if (isBlacklisted) {
+      throw new ApiError(httpStatus.UNAUTHORIZED, 'Session has been revoked. Please login again.');
+    }
+ 
     const verified = jwtHelpers.verifyToken(
       token,
       config.jwt.access_secret as string,
     );
-
-    // 7. Attach decoded payload to req.user
+ 
     req.user = {
       userId: verified.userId as string,
       role: verified.role as Role,
       email: verified.email as string,
     };
-
-    // 8. Call next()
     next();
   } catch (error: any) {
-    // 5 & 6. Handle invalid or expired tokens
     if (error.name === 'TokenExpiredError') {
-      throw new ApiError(
-        httpStatus.UNAUTHORIZED,
-        'Token has expired, please refresh',
-      );
+      throw new ApiError(httpStatus.UNAUTHORIZED, 'Token has expired, please refresh');
     }
-    throw new ApiError(httpStatus.UNAUTHORIZED, 'Invalid token');
+    throw new ApiError(httpStatus.UNAUTHORIZED, error.message || 'Invalid token');
   }
 };
 

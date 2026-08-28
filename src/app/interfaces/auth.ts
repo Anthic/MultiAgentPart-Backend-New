@@ -8,6 +8,8 @@ export type IAuthUserPayload = {
 
 export interface AuthenticatedRequest extends Request {
   user?: IAuthUserPayload;
+  isFreeRequest?: boolean
+  chargeAmountBDT?: number
   researchQuota?: {
     limit: number;
     used: number;

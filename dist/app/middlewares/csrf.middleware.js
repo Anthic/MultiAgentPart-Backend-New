@@ -90,6 +90,12 @@ const verifyCsrf = (req, _res, next) => {
     if (SAFE_METHODS.includes(req.method)) {
         return next();
     }
+    if (config_1.default.env === 'development') {
+        return next();
+    }
+    if (req.originalUrl.includes('/payment') || req.path.startsWith('/payment')) {
+        return next();
+    }
     const originHeader = req.headers.origin;
     const refererHeader = req.headers.referer;
     if (isWhitelistedOrigin(originHeader, refererHeader)) {

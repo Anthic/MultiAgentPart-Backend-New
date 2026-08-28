@@ -9,7 +9,8 @@ const ApiError_1 = __importDefault(require("../errors/ApiError"));
 const config_1 = __importDefault(require("../../config"));
 const jwtHelpers_1 = require("../helpers/jwtHelpers");
 const auth_1 = require("../constants/auth");
-const authenticate = (req, _res, next) => {
+const redis_1 = require("../../config/redis");
+const authenticate = async (req, _res, next) => {
     let token = req.cookies?.[auth_1.authCookieNames.accessToken];
     if (!token && req.headers.authorization?.startsWith('Bearer ')) {
         token = req.headers.authorization.split(' ')[1];
@@ -18,6 +19,10 @@ const authenticate = (req, _res, next) => {
         throw new ApiError_1.default(http_status_1.default.UNAUTHORIZED, 'Authentication required');
     }
     try {
+        const isBlacklisted = await redis_1.redis.get(`token_blacklist:${token}`);
+        if (isBlacklisted) {
+            throw new ApiError_1.default(http_status_1.default.UNAUTHORIZED, 'Session has been revoked. Please login again.');
+        }
         const verified = jwtHelpers_1.jwtHelpers.verifyToken(token, config_1.default.jwt.access_secret);
         req.user = {
             userId: verified.userId,
@@ -30,7 +35,7 @@ const authenticate = (req, _res, next) => {
         if (error.name === 'TokenExpiredError') {
             throw new ApiError_1.default(http_status_1.default.UNAUTHORIZED, 'Token has expired, please refresh');
         }
-        throw new ApiError_1.default(http_status_1.default.UNAUTHORIZED, 'Invalid token');
+        throw new ApiError_1.default(http_status_1.default.UNAUTHORIZED, error.message || 'Invalid token');
     }
 };
 const authorizeRoles = (...roles) => {

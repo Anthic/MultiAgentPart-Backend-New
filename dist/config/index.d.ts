@@ -25,5 +25,19 @@ declare const _default: {
         password: string | undefined;
     };
     csrf_secret: string;
+    ssl: {
+        store_id: string;
+        store_pass: string;
+        is_live: boolean;
+        payment_api: string;
+        validation_api: string;
+        success_backend_url: string;
+        fail_backend_url: string;
+        cancel_backend_url: string;
+        ipn_url: string;
+        success_frontend_url: string;
+        fail_frontend_url: string;
+        cancel_frontend_url: string;
+    };
 };
 export default _default;
