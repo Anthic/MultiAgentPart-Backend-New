@@ -140,9 +140,9 @@ const getJobStatus = async (jobId: string): Promise<IPythonJobResponse> => {
       throw pollError;
     }
     
-    // 2. Cache running/queued statuses for 3 seconds to avoid spamming the Python API
+    // Cache running/queued status for 1s — minimises detection lag when job completes
     if (res.data.status === 'running' || res.data.status === 'queued') {
-      await redis.setex(cacheKey, 3, JSON.stringify(res.data));
+      await redis.setex(cacheKey, 1, JSON.stringify(res.data));
     }
 
     // 3. If the job completed successfully, update the main topic cache with the final result!
