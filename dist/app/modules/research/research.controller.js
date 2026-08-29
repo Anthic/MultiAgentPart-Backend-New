@@ -72,10 +72,14 @@ const getResearchQuotaStatus = (0, catchAsync_1.default)(async (req, res) => {
 });
 const getJobStatus = (0, catchAsync_1.default)(async (req, res) => {
     const { jobId } = req.params;
+    const userId = req.user?.userId;
     if (!jobId || typeof jobId !== 'string') {
         throw new ApiError_1.default(http_status_1.default.BAD_REQUEST, 'Job ID is required');
     }
-    const result = await research_service_1.ResearchService.getJobStatus(jobId);
+    if (!userId) {
+        throw new ApiError_1.default(http_status_1.default.UNAUTHORIZED, 'Unauthorized');
+    }
+    const result = await research_service_1.ResearchService.getJobStatus(jobId, userId);
     (0, sendResponse_1.default)(res, {
         statusCode: http_status_1.default.OK,
         success: true,

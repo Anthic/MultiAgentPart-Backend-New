@@ -79,10 +79,14 @@ const getResearchQuotaStatus = catchAsync(async (req: Request, res: Response) =>
 
 const getJobStatus = catchAsync(async (req: Request, res: Response) => {
   const { jobId } = req.params as { jobId: string }; 
+  const userId = req.user?.userId;
   if (!jobId || typeof jobId !== 'string') {
     throw new ApiError(httpStatus.BAD_REQUEST, 'Job ID is required');
   }
-  const result = await ResearchService.getJobStatus(jobId);
+  if (!userId) {
+    throw new ApiError(httpStatus.UNAUTHORIZED, 'Unauthorized');
+  }
+  const result = await ResearchService.getJobStatus(jobId, userId);
   sendResponse<IPythonJobResponse>(res, {
     statusCode: httpStatus.OK,
     success: true,

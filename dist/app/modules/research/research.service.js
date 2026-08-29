@@ -12,12 +12,12 @@ const crypto_1 = __importDefault(require("crypto"));
 const RESEARCH_CACHE_TTL = 60 * 60 * 24;
 const JOB_TOPIC_TTL = 60 * 60 * 2;
 const normalizeTopic = (topic) => topic.toLocaleLowerCase().trim().replace(/\s+/g, ' ');
-const researchKey = (topic, mode = 'deep') => `research:${crypto_1.default.createHash('md5').update(`${normalizeTopic(topic)}:${mode}`).digest('hex')}`;
+const researchKey = (topic, mode = 'deep', userId) => `research:${crypto_1.default.createHash('md5').update(`${userId ?? 'anonymous'}:${normalizeTopic(topic)}:${mode}`).digest('hex')}`;
 const jobTopicKey = (jobId) => `job:${jobId}`;
 const startResearch = async (payload, userId) => {
     const mode = payload.mode || 'deep';
     try {
-        const cached = await redis_1.redis.get(researchKey(payload.topic, mode));
+        const cached = await redis_1.redis.get(researchKey(payload.topic, mode, userId));
         if (cached) {
             try {
                 const parsed = JSON.parse(cached);
@@ -43,12 +43,12 @@ const startResearch = async (payload, userId) => {
             }
             catch (error) {
                 console.error(`[Cache Error] Failed to parse cached research for topic "${payload.topic}". Evicting.`, error);
-                await redis_1.redis.del(researchKey(payload.topic, mode));
+                await redis_1.redis.del(researchKey(payload.topic, mode, userId));
             }
         }
         const response = await axiosClient_1.pythonApiClient.post('/research', { topic: payload.topic, user_id: userId, mode });
         const ttl = response.data.status === 'done' ? RESEARCH_CACHE_TTL : 300;
-        await redis_1.redis.setex(researchKey(payload.topic, mode), ttl, JSON.stringify(response.data));
+        await redis_1.redis.setex(researchKey(payload.topic, mode, userId), ttl, JSON.stringify(response.data));
         await redis_1.redis.setex(jobTopicKey(response.data.job_id), JOB_TOPIC_TTL, normalizeTopic(payload.topic));
         return response.data;
     }
@@ -59,13 +59,20 @@ const startResearch = async (payload, userId) => {
         throw new ApiError_1.default(http_status_1.default.BAD_GATEWAY, message);
     }
 };
-const getJobStatus = async (jobId) => {
+const assertJobOwnership = (job, userId) => {
+    const ownerId = job.user_id || job.result?.user_id;
+    if (!ownerId || ownerId !== userId) {
+        throw new ApiError_1.default(http_status_1.default.FORBIDDEN, 'Access denied: You do not own this research job');
+    }
+    return job;
+};
+const getJobStatus = async (jobId, userId) => {
     try {
         const cacheKey = `job_status_cache:${jobId}`;
         const cached = await redis_1.redis.get(cacheKey);
         if (cached) {
             try {
-                return JSON.parse(cached);
+                return assertJobOwnership(JSON.parse(cached), userId);
             }
             catch (err) {
                 console.error(`[Cache Error] Failed to parse cached job status for "${jobId}". Evicting.`, err);
@@ -82,8 +89,9 @@ const getJobStatus = async (jobId) => {
                     const historyRes = await axiosClient_1.pythonApiClient.get(`/history/${jobId}`);
                     if (historyRes.data) {
                         const dbRec = historyRes.data;
-                        return {
+                        return assertJobOwnership({
                             job_id: dbRec.job_id || String(dbRec.id),
+                            user_id: dbRec.user_id,
                             status: 'done',
                             progress: 100,
                             stage: 'Complete',
@@ -100,7 +108,7 @@ const getJobStatus = async (jobId) => {
                             },
                             error: null,
                             created_at: dbRec.created_at,
-                        };
+                        }, userId);
                     }
                 }
                 catch (historyError) {
@@ -109,21 +117,21 @@ const getJobStatus = async (jobId) => {
             throw pollError;
         }
         if (res.data.status === 'running' || res.data.status === 'queued') {
-            await redis_1.redis.setex(cacheKey, 3, JSON.stringify(res.data));
+            await redis_1.redis.setex(cacheKey, 1, JSON.stringify(res.data));
         }
         if (res.data.status === 'done' && res.data.result) {
             const topic = await redis_1.redis.get(jobTopicKey(jobId));
             if (topic) {
-                await redis_1.redis.setex(researchKey(topic), RESEARCH_CACHE_TTL, JSON.stringify(res.data));
+                await redis_1.redis.setex(researchKey(topic, 'deep', res.data.user_id), RESEARCH_CACHE_TTL, JSON.stringify(res.data));
             }
         }
         else if (res.data.status === 'failed') {
             const topic = await redis_1.redis.get(jobTopicKey(jobId));
             if (topic) {
-                await redis_1.redis.del(researchKey(topic));
+                await redis_1.redis.del(researchKey(topic, 'deep', res.data.user_id));
             }
         }
-        return res.data;
+        return assertJobOwnership(res.data, userId);
     }
     catch (error) {
         if (error.response?.status === 404) {

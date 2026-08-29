@@ -15,8 +15,10 @@ const JOB_TOPIC_TTL = 60 * 60 * 2;
 const normalizeTopic = (topic: string): string =>
   topic.toLocaleLowerCase().trim().replace(/\s+/g, ' ');
 
-const researchKey = (topic: string, mode: string = 'deep'): string =>
-  `research:${crypto.createHash('md5').update(`${normalizeTopic(topic)}:${mode}`).digest('hex')}`;
+const researchKey = (topic: string, mode: string = 'deep', userId?: string): string =>
+  // Results can contain user-specific context and a job ID. Never share a
+  // cached job record across accounts, even when the research topic matches.
+  `research:${crypto.createHash('md5').update(`${userId ?? 'anonymous'}:${normalizeTopic(topic)}:${mode}`).digest('hex')}`;
 
 const jobTopicKey = (jobId: string): string => `job:${jobId}`;
 
@@ -28,7 +30,7 @@ const startResearch = async (
   const mode = payload.mode || 'deep';
   try {
     //check check
-    const cached = await redis.get(researchKey(payload.topic, mode));
+    const cached = await redis.get(researchKey(payload.topic, mode, userId));
     if (cached) {
       try {
       const parsed = JSON.parse(cached) as IPythonJobResponse;
@@ -55,7 +57,7 @@ const startResearch = async (
       }
       } catch (error) {
         console.error(`[Cache Error] Failed to parse cached research for topic "${payload.topic}". Evicting.`, error);
-        await redis.del(researchKey(payload.topic, mode));
+        await redis.del(researchKey(payload.topic, mode, userId));
       }
     }
     //no cache then python call
@@ -67,7 +69,7 @@ const startResearch = async (
     // If it's done, cache for 24h. If it's running, cache for only 5m to avoid lockouts.
     const ttl = response.data.status === 'done' ? RESEARCH_CACHE_TTL : 300;
     await redis.setex(
-      researchKey(payload.topic, mode),
+      researchKey(payload.topic, mode, userId),
       ttl,
       JSON.stringify(response.data),
     );
@@ -88,7 +90,17 @@ const startResearch = async (
   }
 };
 
-const getJobStatus = async (jobId: string): Promise<IPythonJobResponse> => {
+const assertJobOwnership = (job: IPythonJobResponse, userId: string): IPythonJobResponse => {
+  const ownerId = job.user_id || job.result?.user_id;
+  // Fail closed for legacy/unattributed job entries rather than returning a
+  // potentially private report to whoever knows its job ID.
+  if (!ownerId || ownerId !== userId) {
+    throw new ApiError(httpStatus.FORBIDDEN, 'Access denied: You do not own this research job');
+  }
+  return job;
+};
+
+const getJobStatus = async (jobId: string, userId: string): Promise<IPythonJobResponse> => {
   try {
     const cacheKey = `job_status_cache:${jobId}`;
 
@@ -96,7 +108,7 @@ const getJobStatus = async (jobId: string): Promise<IPythonJobResponse> => {
     const cached = await redis.get(cacheKey);
     if (cached) {
       try {
-        return JSON.parse(cached);
+        return assertJobOwnership(JSON.parse(cached) as IPythonJobResponse, userId);
       } catch (err) {
         console.error(`[Cache Error] Failed to parse cached job status for "${jobId}". Evicting.`, err);
         await redis.del(cacheKey); 
@@ -113,8 +125,9 @@ const getJobStatus = async (jobId: string): Promise<IPythonJobResponse> => {
           const historyRes = await pythonApiClient.get<any>(`/history/${jobId}`);
           if (historyRes.data) {
             const dbRec = historyRes.data;
-            return {
+            return assertJobOwnership({
               job_id: dbRec.job_id || String(dbRec.id),
+              user_id: dbRec.user_id,
               status: 'done' as const,
               progress: 100,
               stage: 'Complete',
@@ -131,7 +144,7 @@ const getJobStatus = async (jobId: string): Promise<IPythonJobResponse> => {
               },
               error: null,
               created_at: dbRec.created_at,
-            };
+            }, userId);
           }
         } catch (historyError: any) {
           // If history also fails or is not found, continue to throw the original 404
@@ -150,7 +163,7 @@ const getJobStatus = async (jobId: string): Promise<IPythonJobResponse> => {
       const topic = await redis.get(jobTopicKey(jobId));
       if (topic) {
         await redis.setex(
-          researchKey(topic),
+          researchKey(topic, 'deep', res.data.user_id),
           RESEARCH_CACHE_TTL,
           JSON.stringify(res.data),
         );
@@ -159,11 +172,11 @@ const getJobStatus = async (jobId: string): Promise<IPythonJobResponse> => {
       // If the job failed, immediately clear the cache so the user can retry
       const topic = await redis.get(jobTopicKey(jobId));
       if (topic) {
-        await redis.del(researchKey(topic));
+        await redis.del(researchKey(topic, 'deep', res.data.user_id));
       }
     }
     
-    return res.data;
+    return assertJobOwnership(res.data, userId);
   } catch (error: any) {
     if (error.response?.status === 404) {
       throw new ApiError(httpStatus.NOT_FOUND, `Job '${jobId}' not found`);

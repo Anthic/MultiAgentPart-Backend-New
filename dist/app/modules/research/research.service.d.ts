@@ -1,7 +1,7 @@
 import { IPythonJobResponse, IResearchStartRequest } from './research.interface';
 export declare const ResearchService: {
     startResearch: (payload: IResearchStartRequest, userId?: string) => Promise<IPythonJobResponse>;
-    getJobStatus: (jobId: string) => Promise<IPythonJobResponse>;
+    getJobStatus: (jobId: string, userId: string) => Promise<IPythonJobResponse>;
     getResearchHistory: (limit?: number, userId?: string) => Promise<{
         records: IPythonJobResponse[];
         count: number;

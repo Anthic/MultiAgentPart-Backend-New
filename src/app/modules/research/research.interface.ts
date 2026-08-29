@@ -1,6 +1,7 @@
 export type ResearchJobStatus = 'queued' | 'running' | 'done' | 'failed';
 
 export interface IResearchResult {
+  user_id?: string;
   topic: string;
   report: string;
   critique: string;
