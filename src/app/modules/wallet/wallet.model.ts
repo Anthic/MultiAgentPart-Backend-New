@@ -8,6 +8,7 @@ const walletSchema = new Schema<IWallet>(
     balanceBDT: { type: Number, required: true, default: 10.0 }, // ৳10 Signup bonus
     totalSpentBDT: { type: Number, default: 0.0 },
     totalTokensUsed: { type: Number, default: 0 },
+    freeResearchUsed: { type: Boolean, default: false },
     subscriptionTier: {
       type: String,
       enum: ['free', 'pro', 'enterprise'],

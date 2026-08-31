@@ -19,6 +19,7 @@ export interface IWallet {
   balanceBDT: number;        // Available balance in BDT (৳)
   totalSpentBDT: number;     // Total lifetime spending
   totalTokensUsed: number;   // Total lifetime tokens consumed
+  freeResearchUsed: boolean; // The account's one-time complimentary research run
   subscriptionTier: 'free' | 'pro' | 'enterprise';
   createdAt?: Date;
   updatedAt?: Date;

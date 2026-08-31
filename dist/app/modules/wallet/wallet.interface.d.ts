@@ -17,6 +17,7 @@ export interface IWallet {
     balanceBDT: number;
     totalSpentBDT: number;
     totalTokensUsed: number;
+    freeResearchUsed: boolean;
     subscriptionTier: 'free' | 'pro' | 'enterprise';
     createdAt?: Date;
     updatedAt?: Date;

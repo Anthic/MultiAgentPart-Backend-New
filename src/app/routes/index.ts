@@ -7,6 +7,7 @@ import { PaperRoutes } from '../modules/paper/paper.route';
 import { NoteRoutes } from '../modules/note/note.route';
 import { WalletRoutes } from '../modules/wallet/wallet.route';
 import { PaymentRoutes } from '../modules/payment/payment.route';
+import { ParaphraseRoutes } from '../modules/paraphrase/paraphrase.route';
 
 const router = express.Router();
 
@@ -43,6 +44,10 @@ const moduleRoutes: IModuleRoute[] = [
 {
   path: '/payment',
   route: PaymentRoutes,
+},
+{
+  path: '/paraphrase',
+  route: ParaphraseRoutes,
 },
 ];
 

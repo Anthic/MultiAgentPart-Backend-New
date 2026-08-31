@@ -7,6 +7,7 @@ const walletSchema = new mongoose_1.Schema({
     balanceBDT: { type: Number, required: true, default: 10.0 },
     totalSpentBDT: { type: Number, default: 0.0 },
     totalTokensUsed: { type: Number, default: 0 },
+    freeResearchUsed: { type: Boolean, default: false },
     subscriptionTier: {
         type: String,
         enum: ['free', 'pro', 'enterprise'],

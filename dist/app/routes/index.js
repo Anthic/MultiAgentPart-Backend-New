@@ -11,6 +11,7 @@ const paper_route_1 = require("../modules/paper/paper.route");
 const note_route_1 = require("../modules/note/note.route");
 const wallet_route_1 = require("../modules/wallet/wallet.route");
 const payment_route_1 = require("../modules/payment/payment.route");
+const paraphrase_route_1 = require("../modules/paraphrase/paraphrase.route");
 const router = express_1.default.Router();
 const moduleRoutes = [
     {
@@ -40,6 +41,10 @@ const moduleRoutes = [
     {
         path: '/payment',
         route: payment_route_1.PaymentRoutes,
+    },
+    {
+        path: '/paraphrase',
+        route: paraphrase_route_1.ParaphraseRoutes,
     },
 ];
 moduleRoutes.forEach((route) => router.use(route.path, route.route));

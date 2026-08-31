@@ -21,6 +21,14 @@ const getOrCreateWallet = async (userId) => {
 const getWalletBalance = async (userId) => {
     return await getOrCreateWallet(userId);
 };
+const reserveFreeResearch = async (userId) => {
+    await getOrCreateWallet(userId);
+    const wallet = await wallet_model_1.Wallet.findOneAndUpdate({ userId, freeResearchUsed: false }, { $set: { freeResearchUsed: true } }, { new: true });
+    return Boolean(wallet);
+};
+const refundFreeResearch = async (userId) => {
+    await wallet_model_1.Wallet.updateOne({ userId }, { $set: { freeResearchUsed: false } });
+};
 const deductCredits = async (userId, payload) => {
     const wallet = await getOrCreateWallet(userId);
     if (wallet.balanceBDT < payload.costBDT) {
@@ -30,10 +38,10 @@ const deductCredits = async (userId, payload) => {
         $inc: {
             balanceBDT: -payload.costBDT,
             totalSpentBDT: payload.costBDT,
-            totalTokensUsed: payload.promptTokens + payload.completionTokens
-        }
+            totalTokensUsed: payload.promptTokens + payload.completionTokens,
+        },
     }, {
-        new: true
+        new: true,
     });
     if (!updatedWallet) {
         throw new ApiError_1.default(http_status_1.default.PAYMENT_REQUIRED, 'Insufficient BDT balance.');
@@ -50,6 +58,19 @@ const deductCredits = async (userId, payload) => {
     });
     return { wallet: updatedWallet, auditLog };
 };
+const refundCredits = async (userId, payload) => {
+    if (payload.costBDT <= 0)
+        return await getOrCreateWallet(userId);
+    const tokens = payload.tokensToRefund || 0;
+    const updatedWallet = await wallet_model_1.Wallet.findOneAndUpdate({ userId }, {
+        $inc: {
+            balanceBDT: payload.costBDT,
+            totalSpentBDT: -payload.costBDT,
+            totalTokensUsed: -tokens,
+        },
+    }, { new: true });
+    return updatedWallet || (await getOrCreateWallet(userId));
+};
 const addFundsToWallet = async (userId, amountBDT) => {
     if (amountBDT <= 0) {
         throw new ApiError_1.default(http_status_1.default.BAD_REQUEST, 'Recharge amount must be greater than 0 BDT');
@@ -63,7 +84,11 @@ const getAuditLogs = async (userId, limit = 20) => {
 };
 exports.WalletService = {
     getWalletBalance,
+    getOrCreateWallet,
+    reserveFreeResearch,
+    refundFreeResearch,
     deductCredits,
+    refundCredits,
     addFundsToWallet,
     getAuditLogs,
 };
