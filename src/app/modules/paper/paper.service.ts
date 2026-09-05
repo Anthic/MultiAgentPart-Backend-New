@@ -2,6 +2,7 @@ import httpStatus from "http-status";
 import ApiError from "../../errors/ApiError";
 import { IPaper } from "./paper.interface";
 import { Paper } from "./paper.model";
+import { pythonApiClient } from "../../shared/axiosClient";
 
 const createPaper = async(payload : IPaper, userId : string) : Promise<IPaper> => {
     const result = await Paper.create({
@@ -62,6 +63,37 @@ const addCitation = async (id: string, userId: string, citation: any) => {
   return paper;
 };
 
+const generateDefenseQuestions = async (id: string, userId: string) => {
+  const paper = await getSinglePaper(id, userId);
+  const response = await pythonApiClient.post('/api/v1/academic/defense/questions', {
+    title: paper.title,
+    content: paper.contentMarkdown || paper.abstract || paper.title,
+    user_id: userId,
+  });
+  return response.data;
+};
+
+const evaluateDefenseRebuttal = async (
+  id: string,
+  userId: string,
+  payload: {
+    examiner_name: string;
+    examiner_title: string;
+    question: string;
+    student_answer: string;
+  },
+) => {
+  await getSinglePaper(id, userId); 
+  const response = await pythonApiClient.post('/api/v1/academic/defense/evaluate', {
+    ...payload,
+    user_id: userId,
+  });
+  return response.data;
+};
+
+
+
+
 export const PaperService = {
   createPaper,
   getAllPapers,
@@ -69,4 +101,6 @@ export const PaperService = {
   updatePaper,
   deletePaper,
   addCitation,
+  generateDefenseQuestions,
+  evaluateDefenseRebuttal
 };

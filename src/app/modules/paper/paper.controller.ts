@@ -92,6 +92,35 @@ const addCitation = catchAsync(async (req: Request, res: Response) => {
     data: result,
   });
 });
+const getDefenseQuestions = catchAsync(async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+  const { id } = req.params as { id: string };
+  if (!userId) throw new ApiError(httpStatus.UNAUTHORIZED, 'Unauthorized');
+
+  const result = await PaperService.generateDefenseQuestions(id, userId);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Defense committee questions generated successfully',
+    data: result,
+  });
+});
+
+const evaluateDefenseRebuttal = catchAsync(async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+  const { id } = req.params as { id: string };
+  if (!userId) throw new ApiError(httpStatus.UNAUTHORIZED, 'Unauthorized');
+
+  const result = await PaperService.evaluateDefenseRebuttal(id, userId, req.body);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Defense rebuttal evaluated successfully',
+    data: result,
+  });
+});
+
+
 
 export const PaperController = {
   createPaper,
@@ -100,4 +129,6 @@ export const PaperController = {
   updatePaper,
   deletePaper,
   addCitation,
+  getDefenseQuestions,
+  evaluateDefenseRebuttal
 };

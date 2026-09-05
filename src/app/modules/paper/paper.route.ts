@@ -30,5 +30,7 @@ router.post(
   auth.authenticate,
   PaperController.addCitation,
 );
+router.post('/:id/defense/questions', auth.authenticate, PaperController.getDefenseQuestions);
+router.post('/:id/defense/evaluate', auth.authenticate, PaperController.evaluateDefenseRebuttal);
 
 export const PaperRoutes = router;
