@@ -2,9 +2,26 @@ import httpStatus from "http-status";
 import ApiError from "../../errors/ApiError";
 import { INote } from "./note.interface";
 import { Note } from "./note.model";
+import { pythonApiClient } from "../../shared/axiosClient";
 
 const createNote = async (payload: INote, userId: string): Promise<INote> => {
   const result = await Note.create({ ...payload, userId });
+
+  pythonApiClient.post('/api/v1/vault/sync', {
+    note_id: result._id.toString(),
+    user_id: userId,
+    title: result.title,
+    content: result.content,
+    tags: result.tags || [],
+    source_url: result.sourceUrl || '',
+  }).then((res) => {
+    if (res.data?.embedding_id) {
+      Note.findByIdAndUpdate(result._id, { embeddingId: res.data.embedding_id }).exec();
+    }
+  }).catch((err) => {
+    console.error('[Vault Sync Error] Failed to sync note to Qdrant:', err.message);
+  });
+
   return result;
 };
 

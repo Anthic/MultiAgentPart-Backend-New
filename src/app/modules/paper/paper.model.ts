@@ -32,6 +32,8 @@ const paperSchema = new Schema<IPaper>(
     citations: [citationSchema],
     peerReviewResults: peerReviewResultSchema,
     attachedNotes: [{ type: Schema.Types.ObjectId, ref: 'Note' }],
+    slidesMarkdown: { type: String, default: '' },
+    slideCount: { type: Number, default: 0 }, 
     status: {
       type: String,
       enum: ['draft', 'in_review', 'published', 'archived'],

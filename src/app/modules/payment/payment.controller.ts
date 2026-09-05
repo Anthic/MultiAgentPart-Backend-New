@@ -27,11 +27,11 @@ const initRecharge = catchAsync(async (req: Request, res: Response) => {
 });
 
 const successPayment = catchAsync(async (req: Request, res: Response) => {
-  const query = req.query as Record<string, string>;
-  const result = await PaymentService.handlePaymentSuccess(query);
-
+  const payload = { ...req.query, ...req.body } as Record<string, string>;
+  const result = await PaymentService.handlePaymentSuccess(payload);
+  const transactionId = payload.tran_id || payload.transactionId
   res.redirect(
-    `${config.ssl.success_frontend_url}&transactionId=${query.transactionId}&message=${encodeURIComponent(result.message)}`,
+    `${config.ssl.success_frontend_url}&transactionId=${transactionId}&message=${encodeURIComponent(result.message)}`,
   );
 });
 

@@ -82,7 +82,7 @@ export const authRateLimiter = rateLimit({
   },
 });
 
-// 🛡️ হাইব্রিড ফ্রি-কোটা ও ওয়ালেট পেমেন্ট গার্ড
+
 export const aiRequestLimiter = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -97,7 +97,7 @@ export const aiRequestLimiter = async (
     const userId = req.user.userId;
     const key = researchQuotaKey(userId);
 
-    // ১. Redis থেকে আজকের ফ্রি ইউসেজ চেক করুন
+  
     const currentUsageStr = await redis.get(key);
     const ttl = await redis.ttl(key);
     const currentUsage = parseInt(currentUsageStr || '0', 10);
@@ -109,30 +109,34 @@ export const aiRequestLimiter = async (
       resetAt: getResetAt(Number(ttl)),
     };
 
-    // 🟢 কেস ১: ইউজারের ১টি ফ্রি কোটা বাকি আছে
+    
     if (currentUsage < FREE_DAILY_RESEARCH_LIMIT) {
       await redis.incr(key);
       if (currentUsage === 0) {
         await redis.expire(key, researchQuotaTtlSeconds);
       }
       req.isFreeRequest = true;
-      req.researchQuota = quota;
+      req.researchQuota = {
+        ...quota, 
+        used : currentUsage + 1,
+        remaining : Math.max(FREE_DAILY_RESEARCH_LIMIT - (currentUsage + 1), 0)
+      }
       return next();
     }
 
-    // 🟡 কেস ২: ফ্রি কোটা শেষ -> ওয়ালেটে টাকা আছে কি না চেক করুন
+   
     const wallet = await Wallet.findOne({ userId });
     const userBalance = wallet?.balanceBDT || 0;
 
     if (wallet && userBalance >= RESEARCH_COST_BDT) {
-      // ✅ ওয়ালেটে টাকা আছে -> পে-অ্যাজ-ইউ-গো হিসেবে পাস করুন (কন্ট্রোলারে ৳১৫ কাটা হবে)
+  
       req.isFreeRequest = false;
       req.chargeAmountBDT = RESEARCH_COST_BDT;
       req.researchQuota = quota;
       return next();
     }
 
-    // 🔴 কেস ৩: ফ্রি কোটাও শেষ এবং ওয়ালেটে পর্যাপ্ত টাকাও নেই
+  
     res.status(402).json({
       statusCode: 402,
       success: false,

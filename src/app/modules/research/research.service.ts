@@ -159,23 +159,25 @@ const getJobStatus = async (jobId: string, userId: string): Promise<IPythonJobRe
     }
 
     // 3. If the job completed successfully, update the main topic cache with the final result!
-    if (res.data.status === 'done' && res.data.result) {
-      const topic = await redis.get(jobTopicKey(jobId));
-      if (topic) {
+    const topic = await redis.get(jobTopicKey(jobId));
+    if (topic) {
+      if (res.data.status === 'done' && res.data.result) {
         await redis.setex(
           researchKey(topic, 'deep', res.data.user_id),
           RESEARCH_CACHE_TTL,
           JSON.stringify(res.data),
         );
-      }
-    } else if (res.data.status === 'failed') {
-      // If the job failed, immediately clear the cache so the user can retry
-      const topic = await redis.get(jobTopicKey(jobId));
-      if (topic) {
+        await redis.setex(
+          researchKey(topic, 'fast', res.data.user_id),
+          RESEARCH_CACHE_TTL,
+          JSON.stringify(res.data),
+        );
+      } else if (res.data.status === 'failed') {
+        // If the job failed, immediately clear the cache so the user can retry
         await redis.del(researchKey(topic, 'deep', res.data.user_id));
+        await redis.del(researchKey(topic, 'fast', res.data.user_id));
       }
     }
-    
     return assertJobOwnership(res.data, userId);
   } catch (error: any) {
     if (error.response?.status === 404) {

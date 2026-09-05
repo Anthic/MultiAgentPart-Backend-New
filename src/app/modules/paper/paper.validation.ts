@@ -27,6 +27,14 @@ const updatePaperSchema = z.object({
     abstract: z.string().optional(),
     citations: z.array(citationSchema).optional(),
     attachedNotes: z.array(z.string()).optional(),
+    slidesMarkdown: z.string().optional(),
+    slideCount: z.number().optional(),
+    peerReviewResults: z.object({
+      overallScore: z.number().optional(),
+      methodologyFeedback: z.string().optional(),
+      domainFeedback: z.string().optional(),
+      clarityFeedback: z.string().optional(),
+    }).optional(),
     status: z.enum(['draft', 'in_review', 'published', 'archived']).optional(),
   }),
 });

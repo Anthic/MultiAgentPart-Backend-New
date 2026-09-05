@@ -6,6 +6,11 @@ const router = express.Router();
 
 router.get('/balance', auth.authenticate, WalletController.getMyWallet);
 router.get('/logs', auth.authenticate, WalletController.getAuditLogs);
-router.post('/add-funds', auth.authenticate, WalletController.addFunds);
+router.post(
+  '/add-funds',
+  auth.authenticate,
+  auth.authorize('admin'),
+  WalletController.addFunds,
+);
 
 export const WalletRoutes = router;

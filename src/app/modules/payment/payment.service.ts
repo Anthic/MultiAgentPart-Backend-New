@@ -44,8 +44,9 @@ const initRechargePayment = async (
   return { paymentUrl, transactionId };
 };
 
-const handlePaymentSuccess = async (query: Record<string, string>) => {
-  const { transactionId } = query;
+const handlePaymentSuccess = async (queryOrBody: Record<string, string>) => {
+  const transactionId = queryOrBody.tran_id || queryOrBody.transactionId
+  const val_id = queryOrBody.val_id || queryOrBody.val_id
 
   const payment = await Payment.findOne({ transactionId });
   if (!payment) {
@@ -55,7 +56,15 @@ const handlePaymentSuccess = async (query: Record<string, string>) => {
   if (payment.status === PAYMENT_STATUS.PAID) {
     return { success: true, message: 'Payment already processed' };
   }
-
+  
+  if (val_id) {
+    const validationData = await SSLService.validatePayment(val_id)
+    if (validationData.status !== 'VALID' && validationData !== 'VALIDATED') {
+      payment.status = PAYMENT_STATUS.FAILED;
+      await payment.save()
+      throw new ApiError(httpStatus.BAD_REQUEST, 'Payment validation failed');
+    }
+  }
 
   payment.status = PAYMENT_STATUS.PAID;
   await payment.save();
