@@ -119,6 +119,24 @@ export declare const PaperValidation: {
                 authors?: string[] | undefined;
             }>, "many">>;
             attachedNotes: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+            slidesMarkdown: z.ZodOptional<z.ZodString>;
+            slideCount: z.ZodOptional<z.ZodNumber>;
+            peerReviewResults: z.ZodOptional<z.ZodObject<{
+                overallScore: z.ZodOptional<z.ZodNumber>;
+                methodologyFeedback: z.ZodOptional<z.ZodString>;
+                domainFeedback: z.ZodOptional<z.ZodString>;
+                clarityFeedback: z.ZodOptional<z.ZodString>;
+            }, "strip", z.ZodTypeAny, {
+                overallScore?: number | undefined;
+                methodologyFeedback?: string | undefined;
+                domainFeedback?: string | undefined;
+                clarityFeedback?: string | undefined;
+            }, {
+                overallScore?: number | undefined;
+                methodologyFeedback?: string | undefined;
+                domainFeedback?: string | undefined;
+                clarityFeedback?: string | undefined;
+            }>>;
             status: z.ZodOptional<z.ZodEnum<["draft", "in_review", "published", "archived"]>>;
         }, "strip", z.ZodTypeAny, {
             status?: "draft" | "in_review" | "published" | "archived" | undefined;
@@ -133,7 +151,15 @@ export declare const PaperValidation: {
                 doi?: string | undefined;
                 authors?: string[] | undefined;
             }[] | undefined;
+            peerReviewResults?: {
+                overallScore?: number | undefined;
+                methodologyFeedback?: string | undefined;
+                domainFeedback?: string | undefined;
+                clarityFeedback?: string | undefined;
+            } | undefined;
             attachedNotes?: string[] | undefined;
+            slidesMarkdown?: string | undefined;
+            slideCount?: number | undefined;
         }, {
             status?: "draft" | "in_review" | "published" | "archived" | undefined;
             title?: string | undefined;
@@ -147,7 +173,15 @@ export declare const PaperValidation: {
                 doi?: string | undefined;
                 authors?: string[] | undefined;
             }[] | undefined;
+            peerReviewResults?: {
+                overallScore?: number | undefined;
+                methodologyFeedback?: string | undefined;
+                domainFeedback?: string | undefined;
+                clarityFeedback?: string | undefined;
+            } | undefined;
             attachedNotes?: string[] | undefined;
+            slidesMarkdown?: string | undefined;
+            slideCount?: number | undefined;
         }>;
     }, "strip", z.ZodTypeAny, {
         body: {
@@ -163,7 +197,15 @@ export declare const PaperValidation: {
                 doi?: string | undefined;
                 authors?: string[] | undefined;
             }[] | undefined;
+            peerReviewResults?: {
+                overallScore?: number | undefined;
+                methodologyFeedback?: string | undefined;
+                domainFeedback?: string | undefined;
+                clarityFeedback?: string | undefined;
+            } | undefined;
             attachedNotes?: string[] | undefined;
+            slidesMarkdown?: string | undefined;
+            slideCount?: number | undefined;
         };
     }, {
         body: {
@@ -179,7 +221,15 @@ export declare const PaperValidation: {
                 doi?: string | undefined;
                 authors?: string[] | undefined;
             }[] | undefined;
+            peerReviewResults?: {
+                overallScore?: number | undefined;
+                methodologyFeedback?: string | undefined;
+                domainFeedback?: string | undefined;
+                clarityFeedback?: string | undefined;
+            } | undefined;
             attachedNotes?: string[] | undefined;
+            slidesMarkdown?: string | undefined;
+            slideCount?: number | undefined;
         };
     }>;
 };

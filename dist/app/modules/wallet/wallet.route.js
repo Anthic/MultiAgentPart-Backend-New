@@ -10,6 +10,6 @@ const wallet_controller_1 = require("./wallet.controller");
 const router = express_1.default.Router();
 router.get('/balance', auth_1.auth.authenticate, wallet_controller_1.WalletController.getMyWallet);
 router.get('/logs', auth_1.auth.authenticate, wallet_controller_1.WalletController.getAuditLogs);
-router.post('/add-funds', auth_1.auth.authenticate, wallet_controller_1.WalletController.addFunds);
+router.post('/add-funds', auth_1.auth.authenticate, auth_1.auth.authorize('admin'), wallet_controller_1.WalletController.addFunds);
 exports.WalletRoutes = router;
 //# sourceMappingURL=wallet.route.js.map

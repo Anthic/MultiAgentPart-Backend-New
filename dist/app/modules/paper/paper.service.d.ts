@@ -12,4 +12,11 @@ export declare const PaperService: {
     } & {
         id: string;
     }>;
+    generateDefenseQuestions: (id: string, userId: string) => Promise<any>;
+    evaluateDefenseRebuttal: (id: string, userId: string, payload: {
+        examiner_name: string;
+        examiner_title: string;
+        question: string;
+        student_answer: string;
+    }) => Promise<any>;
 };

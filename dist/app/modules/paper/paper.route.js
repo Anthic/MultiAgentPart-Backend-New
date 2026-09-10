@@ -16,5 +16,7 @@ router.get('/:id', auth_1.auth.authenticate, paper_controller_1.PaperController.
 router.patch('/:id', auth_1.auth.authenticate, (0, validateRequest_1.default)(paper_validation_1.PaperValidation.updatePaperSchema), paper_controller_1.PaperController.updatePaper);
 router.delete('/:id', auth_1.auth.authenticate, paper_controller_1.PaperController.deletePaper);
 router.post('/:id/citations', auth_1.auth.authenticate, paper_controller_1.PaperController.addCitation);
+router.post('/:id/defense/questions', auth_1.auth.authenticate, paper_controller_1.PaperController.getDefenseQuestions);
+router.post('/:id/defense/evaluate', auth_1.auth.authenticate, paper_controller_1.PaperController.evaluateDefenseRebuttal);
 exports.PaperRoutes = router;
 //# sourceMappingURL=paper.route.js.map

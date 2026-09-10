@@ -24,6 +24,8 @@ const paperSchema = new mongoose_1.Schema({
     citations: [citationSchema],
     peerReviewResults: peerReviewResultSchema,
     attachedNotes: [{ type: mongoose_1.Schema.Types.ObjectId, ref: 'Note' }],
+    slidesMarkdown: { type: String, default: '' },
+    slideCount: { type: Number, default: 0 },
     status: {
         type: String,
         enum: ['draft', 'in_review', 'published', 'archived'],

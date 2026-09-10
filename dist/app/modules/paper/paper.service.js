@@ -7,6 +7,7 @@ exports.PaperService = void 0;
 const http_status_1 = __importDefault(require("http-status"));
 const ApiError_1 = __importDefault(require("../../errors/ApiError"));
 const paper_model_1 = require("./paper.model");
+const axiosClient_1 = require("../../shared/axiosClient");
 const createPaper = async (payload, userId) => {
     const result = await paper_model_1.Paper.create({
         ...payload,
@@ -55,6 +56,23 @@ const addCitation = async (id, userId, citation) => {
     await paper.save();
     return paper;
 };
+const generateDefenseQuestions = async (id, userId) => {
+    const paper = await getSinglePaper(id, userId);
+    const response = await axiosClient_1.pythonApiClient.post('/api/v1/academic/defense/questions', {
+        title: paper.title,
+        content: paper.contentMarkdown || paper.abstract || paper.title,
+        user_id: userId,
+    });
+    return response.data;
+};
+const evaluateDefenseRebuttal = async (id, userId, payload) => {
+    await getSinglePaper(id, userId);
+    const response = await axiosClient_1.pythonApiClient.post('/api/v1/academic/defense/evaluate', {
+        ...payload,
+        user_id: userId,
+    });
+    return response.data;
+};
 exports.PaperService = {
     createPaper,
     getAllPapers,
@@ -62,5 +80,7 @@ exports.PaperService = {
     updatePaper,
     deletePaper,
     addCitation,
+    generateDefenseQuestions,
+    evaluateDefenseRebuttal
 };
 //# sourceMappingURL=paper.service.js.map

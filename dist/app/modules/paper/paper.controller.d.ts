@@ -6,4 +6,6 @@ export declare const PaperController: {
     updatePaper: (req: Request, res: Response, next: import("express").NextFunction) => Promise<void>;
     deletePaper: (req: Request, res: Response, next: import("express").NextFunction) => Promise<void>;
     addCitation: (req: Request, res: Response, next: import("express").NextFunction) => Promise<void>;
+    getDefenseQuestions: (req: Request, res: Response, next: import("express").NextFunction) => Promise<void>;
+    evaluateDefenseRebuttal: (req: Request, res: Response, next: import("express").NextFunction) => Promise<void>;
 };

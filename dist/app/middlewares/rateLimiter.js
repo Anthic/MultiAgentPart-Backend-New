@@ -90,7 +90,11 @@ const aiRequestLimiter = async (req, res, next) => {
                 await redis_1.redis.expire(key, researchQuotaTtlSeconds);
             }
             req.isFreeRequest = true;
-            req.researchQuota = quota;
+            req.researchQuota = {
+                ...quota,
+                used: currentUsage + 1,
+                remaining: Math.max(FREE_DAILY_RESEARCH_LIMIT - (currentUsage + 1), 0)
+            };
             return next();
         }
         const wallet = await wallet_model_1.Wallet.findOne({ userId });

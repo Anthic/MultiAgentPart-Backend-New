@@ -7,8 +7,23 @@ exports.NoteService = void 0;
 const http_status_1 = __importDefault(require("http-status"));
 const ApiError_1 = __importDefault(require("../../errors/ApiError"));
 const note_model_1 = require("./note.model");
+const axiosClient_1 = require("../../shared/axiosClient");
 const createNote = async (payload, userId) => {
     const result = await note_model_1.Note.create({ ...payload, userId });
+    axiosClient_1.pythonApiClient.post('/api/v1/vault/sync', {
+        note_id: result._id.toString(),
+        user_id: userId,
+        title: result.title,
+        content: result.content,
+        tags: result.tags || [],
+        source_url: result.sourceUrl || '',
+    }).then((res) => {
+        if (res.data?.embedding_id) {
+            note_model_1.Note.findByIdAndUpdate(result._id, { embeddingId: res.data.embedding_id }).exec();
+        }
+    }).catch((err) => {
+        console.error('[Vault Sync Error] Failed to sync note to Qdrant:', err.message);
+    });
     return result;
 };
 const getAllNotes = async (userId, query) => {

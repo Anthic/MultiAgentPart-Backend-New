@@ -119,16 +119,15 @@ const getJobStatus = async (jobId, userId) => {
         if (res.data.status === 'running' || res.data.status === 'queued') {
             await redis_1.redis.setex(cacheKey, 1, JSON.stringify(res.data));
         }
-        if (res.data.status === 'done' && res.data.result) {
-            const topic = await redis_1.redis.get(jobTopicKey(jobId));
-            if (topic) {
+        const topic = await redis_1.redis.get(jobTopicKey(jobId));
+        if (topic) {
+            if (res.data.status === 'done' && res.data.result) {
                 await redis_1.redis.setex(researchKey(topic, 'deep', res.data.user_id), RESEARCH_CACHE_TTL, JSON.stringify(res.data));
+                await redis_1.redis.setex(researchKey(topic, 'fast', res.data.user_id), RESEARCH_CACHE_TTL, JSON.stringify(res.data));
             }
-        }
-        else if (res.data.status === 'failed') {
-            const topic = await redis_1.redis.get(jobTopicKey(jobId));
-            if (topic) {
+            else if (res.data.status === 'failed') {
                 await redis_1.redis.del(researchKey(topic, 'deep', res.data.user_id));
+                await redis_1.redis.del(researchKey(topic, 'fast', res.data.user_id));
             }
         }
         return assertJobOwnership(res.data, userId);

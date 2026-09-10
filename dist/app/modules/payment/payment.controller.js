@@ -24,9 +24,10 @@ const initRecharge = (0, catchAsync_1.default)(async (req, res) => {
     });
 });
 const successPayment = (0, catchAsync_1.default)(async (req, res) => {
-    const query = req.query;
-    const result = await payment_service_1.PaymentService.handlePaymentSuccess(query);
-    res.redirect(`${config_1.default.ssl.success_frontend_url}&transactionId=${query.transactionId}&message=${encodeURIComponent(result.message)}`);
+    const payload = { ...req.query, ...req.body };
+    const result = await payment_service_1.PaymentService.handlePaymentSuccess(payload);
+    const transactionId = payload.tran_id || payload.transactionId;
+    res.redirect(`${config_1.default.ssl.success_frontend_url}&transactionId=${transactionId}&message=${encodeURIComponent(result.message)}`);
 });
 const failPayment = (0, catchAsync_1.default)(async (req, res) => {
     const query = req.query;

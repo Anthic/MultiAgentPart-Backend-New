@@ -39,14 +39,23 @@ const initRechargePayment = async (userId, amountBDT, paymentType = 'wallet_topu
     });
     return { paymentUrl, transactionId };
 };
-const handlePaymentSuccess = async (query) => {
-    const { transactionId } = query;
+const handlePaymentSuccess = async (queryOrBody) => {
+    const transactionId = queryOrBody.tran_id || queryOrBody.transactionId;
+    const val_id = queryOrBody.val_id || queryOrBody.val_id;
     const payment = await payment_model_1.Payment.findOne({ transactionId });
     if (!payment) {
         throw new ApiError_1.default(http_status_1.default.NOT_FOUND, 'Payment record not found');
     }
     if (payment.status === payment_interface_1.PAYMENT_STATUS.PAID) {
         return { success: true, message: 'Payment already processed' };
+    }
+    if (val_id) {
+        const validationData = await sslCommerz_service_1.SSLService.validatePayment(val_id);
+        if (validationData.status !== 'VALID' && validationData !== 'VALIDATED') {
+            payment.status = payment_interface_1.PAYMENT_STATUS.FAILED;
+            await payment.save();
+            throw new ApiError_1.default(http_status_1.default.BAD_REQUEST, 'Payment validation failed');
+        }
     }
     payment.status = payment_interface_1.PAYMENT_STATUS.PAID;
     await payment.save();

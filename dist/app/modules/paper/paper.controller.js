@@ -85,6 +85,32 @@ const addCitation = (0, catchAsync_1.default)(async (req, res) => {
         data: result,
     });
 });
+const getDefenseQuestions = (0, catchAsync_1.default)(async (req, res) => {
+    const userId = req.user?.userId;
+    const { id } = req.params;
+    if (!userId)
+        throw new ApiError_1.default(http_status_1.default.UNAUTHORIZED, 'Unauthorized');
+    const result = await paper_service_1.PaperService.generateDefenseQuestions(id, userId);
+    (0, sendResponse_1.default)(res, {
+        statusCode: http_status_1.default.OK,
+        success: true,
+        message: 'Defense committee questions generated successfully',
+        data: result,
+    });
+});
+const evaluateDefenseRebuttal = (0, catchAsync_1.default)(async (req, res) => {
+    const userId = req.user?.userId;
+    const { id } = req.params;
+    if (!userId)
+        throw new ApiError_1.default(http_status_1.default.UNAUTHORIZED, 'Unauthorized');
+    const result = await paper_service_1.PaperService.evaluateDefenseRebuttal(id, userId, req.body);
+    (0, sendResponse_1.default)(res, {
+        statusCode: http_status_1.default.OK,
+        success: true,
+        message: 'Defense rebuttal evaluated successfully',
+        data: result,
+    });
+});
 exports.PaperController = {
     createPaper,
     getAllPapers,
@@ -92,5 +118,7 @@ exports.PaperController = {
     updatePaper,
     deletePaper,
     addCitation,
+    getDefenseQuestions,
+    evaluateDefenseRebuttal
 };
 //# sourceMappingURL=paper.controller.js.map

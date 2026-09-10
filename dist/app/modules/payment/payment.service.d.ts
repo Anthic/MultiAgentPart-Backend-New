@@ -4,7 +4,7 @@ export declare const PaymentService: {
         paymentUrl: string;
         transactionId: string;
     }>;
-    handlePaymentSuccess: (query: Record<string, string>) => Promise<{
+    handlePaymentSuccess: (queryOrBody: Record<string, string>) => Promise<{
         success: boolean;
         message: string;
     }>;
