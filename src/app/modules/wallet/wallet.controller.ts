@@ -4,6 +4,7 @@ import catchAsync from '../../utils/catchAsync';
 import sendResponse from '../../utils/sendResponse';
 import ApiError from '../../errors/ApiError';
 import { WalletService } from './wallet.service';
+import { clampInt } from '../../utils/pagination';
 
 const getMyWallet = catchAsync(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
@@ -23,7 +24,7 @@ const getAuditLogs = catchAsync(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   if (!userId) throw new ApiError(httpStatus.UNAUTHORIZED, 'Unauthorized');
 
-  const limit = req.query.limit ? Number(req.query.limit) : 20;
+  const limit = clampInt(req.query.limit, 20, 1, 100);
   const result = await WalletService.getAuditLogs(userId, limit);
 
   sendResponse(res, {

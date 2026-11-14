@@ -10,6 +10,10 @@ export interface ITokenAuditLog {
   totalTokens: number;
   costBDT: number;
   creditsDeducted: number;
+  // 'refund' rows record money returned for a failed job, so the audit trail
+  // no longer shows a charge with nothing offsetting it.
+  type?: 'charge' | 'refund';
+  reason?: string;
   createdAt?: Date;
 }
 

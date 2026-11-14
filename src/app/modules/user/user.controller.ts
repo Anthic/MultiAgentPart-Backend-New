@@ -4,6 +4,8 @@ import { UserService } from './user.service';
 import { IAdminCreateUser, IUser, IUserUpdatePayload } from './user.interface';
 import catchAsync from '../../utils/catchAsync';
 import sendResponse from '../../utils/sendResponse';
+import ApiError from '../../errors/ApiError';
+import { clampInt } from '../../utils/pagination';
 
 const createUserByAdmin = catchAsync(async (req: Request, res: Response) => {
   const { ...userData } = req.body as IAdminCreateUser;
@@ -18,8 +20,8 @@ const createUserByAdmin = catchAsync(async (req: Request, res: Response) => {
 });
 
 const getAllUsers = catchAsync(async (req: Request, res: Response) => {
-  const page = parseInt(req.query.page as string, 10) || 1;
-  const limit = parseInt(req.query.limit as string, 10) || 10;
+  const page = clampInt(req.query.page, 1, 1, 10000);
+  const limit = clampInt(req.query.limit, 10, 1, 100);
   const { data, meta } = await UserService.getAllUsers(page, limit);
   sendResponse<IUser[]>(res, {
     statusCode: httpStatus.OK,
@@ -44,6 +46,9 @@ const getUserById = catchAsync(async (req: Request, res: Response) => {
 
 const deleteUserById = catchAsync(async (req: Request, res: Response) => {
   const { userId } = req.params as { userId: string };
+  if (userId === req.user?.userId) {
+    throw new ApiError(httpStatus.BAD_REQUEST, 'You cannot delete your own account here');
+  }
   await UserService.deleteUserById(userId);
 
   sendResponse(res, {

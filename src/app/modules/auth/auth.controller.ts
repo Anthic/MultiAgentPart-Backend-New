@@ -115,7 +115,11 @@ const refreshToken = catchAsync(async (req: Request, res: Response) => {
 
 const logoutUser = catchAsync(async (req: Request, res: Response) => {
   if (req.user?.userId) {
-    await AuthService.logoutUser(req.user.userId);
+    let accessToken = req.cookies?.[authCookieNames.accessToken] as string | undefined;
+    if (!accessToken && req.headers.authorization?.startsWith('Bearer ')) {
+      accessToken = req.headers.authorization.split(' ')[1];
+    }
+    await AuthService.logoutUser(req.user.userId, accessToken);
   }
 
   res.clearCookie(authCookieNames.accessToken, getClearCookieOptions(req));

@@ -7,6 +7,8 @@ import {
   IResearchStartRequest,
 } from './research.interface';
 import crypto from 'crypto';
+import { WalletService } from '../wallet/wallet.service';
+import { refundResearchQuota } from '../../middlewares/rateLimiter';
 
 const RESEARCH_CACHE_TTL = 60 * 60 * 24;
 
@@ -18,9 +20,71 @@ const normalizeTopic = (topic: string): string =>
 const researchKey = (topic: string, mode: string = 'deep', userId?: string): string =>
   // Results can contain user-specific context and a job ID. Never share a
   // cached job record across accounts, even when the research topic matches.
-  `research:${crypto.createHash('md5').update(`${userId ?? 'anonymous'}:${normalizeTopic(topic)}:${mode}`).digest('hex')}`;
+  `research:${crypto.createHash('sha256').update(`${userId ?? 'anonymous'}:${normalizeTopic(topic)}:${mode}`).digest('hex')}`;
 
 const jobTopicKey = (jobId: string): string => `job:${jobId}`;
+const jobChargeKey = (jobId: string): string => `job_charge:${jobId}`;
+const JOB_CHARGE_TTL = 60 * 60 * 24 * 2;
+
+export type JobCharge = {
+  userId: string;
+  kind: 'free' | 'paid';
+  amountBDT: number;
+};
+
+// Remember what a job cost the moment it is accepted. The Python job runs
+// asynchronously, so "start" succeeding says nothing about the job finishing;
+// without this record a job that later fails keeps the user's money / free run.
+const registerJobCharge = async (jobId: string, charge: JobCharge): Promise<void> => {
+  try {
+    await redis.set(jobChargeKey(jobId), JSON.stringify(charge), 'EX', JOB_CHARGE_TTL, 'NX');
+  } catch (err) {
+    console.error('[research] failed to record job charge:', (err as Error).message);
+  }
+};
+
+// GET+DEL in one Lua call so only ONE poller can ever claim the refund, however
+// many tabs poll the failed job at the same time.
+const CLAIM_CHARGE_LUA = `
+local v = redis.call("GET", KEYS[1])
+if v then redis.call("DEL", KEYS[1]) end
+return v
+`;
+
+const refundIfFailed = async (jobId: string, ownerId: string): Promise<void> => {
+  try {
+    const raw = (await redis.eval(CLAIM_CHARGE_LUA, 1, jobChargeKey(jobId))) as string | null;
+    if (!raw) return;
+    const charge = JSON.parse(raw) as JobCharge;
+    if (charge.userId !== ownerId) return;
+    if (charge.kind === 'free') {
+      await refundResearchQuota(charge.userId);
+    } else if (charge.amountBDT > 0) {
+      await WalletService.refundCredits(charge.userId, {
+        costBDT: charge.amountBDT,
+        tokensToRefund: 3000,
+        reason: `Research job ${jobId} failed`,
+        action: 'deep_research',
+      });
+    }
+  } catch (err) {
+    console.error(`[CRITICAL: research refund failed] job=${jobId}`, err);
+  }
+};
+
+// job:<id> -> {t: topic, m: mode}. Older entries were the bare topic string.
+const encodeJobTopic = (topic: string, mode: string): string =>
+  JSON.stringify({ t: normalizeTopic(topic), m: mode });
+
+const decodeJobTopic = (raw: string): { topic: string; mode: string } => {
+  try {
+    const p = JSON.parse(raw);
+    if (p && typeof p.t === 'string') return { topic: p.t, mode: p.m === 'fast' ? 'fast' : 'deep' };
+  } catch {
+    /* legacy plain-string value */
+  }
+  return { topic: raw, mode: 'deep' };
+};
 
 //service part start
 const startResearch = async (
@@ -78,7 +142,7 @@ const startResearch = async (
     await redis.setex(
       jobTopicKey(response.data.job_id),
       JOB_TOPIC_TTL,
-      normalizeTopic(payload.topic),
+      encodeJobTopic(payload.topic, mode),
     );
     return response.data;
   } catch (error: any) {
@@ -122,7 +186,7 @@ const getJobStatus = async (jobId: string, userId: string): Promise<IPythonJobRe
       if (pollError.response?.status === 404) {
         // Fallback: Check if the job exists in Supabase history
         try {
-          const historyRes = await pythonApiClient.get<any>(`/history/${jobId}`);
+          const historyRes = await pythonApiClient.get<any>(`/history/${jobId}`, { params: { user_id: userId } });
           if (historyRes.data) {
             const dbRec = historyRes.data;
             return assertJobOwnership({
@@ -159,24 +223,24 @@ const getJobStatus = async (jobId: string, userId: string): Promise<IPythonJobRe
     }
 
     // 3. If the job completed successfully, update the main topic cache with the final result!
-    const topic = await redis.get(jobTopicKey(jobId));
-    if (topic) {
+    const rawTopic = await redis.get(jobTopicKey(jobId));
+    if (rawTopic) {
+      // Cache ONLY under the mode the job really ran in. Writing a fast-mode
+      // result under the deep key served shallow reports to deep requests.
+      const { topic, mode } = decodeJobTopic(rawTopic);
       if (res.data.status === 'done' && res.data.result) {
         await redis.setex(
-          researchKey(topic, 'deep', res.data.user_id),
-          RESEARCH_CACHE_TTL,
-          JSON.stringify(res.data),
-        );
-        await redis.setex(
-          researchKey(topic, 'fast', res.data.user_id),
+          researchKey(topic, mode, res.data.user_id),
           RESEARCH_CACHE_TTL,
           JSON.stringify(res.data),
         );
       } else if (res.data.status === 'failed') {
         // If the job failed, immediately clear the cache so the user can retry
-        await redis.del(researchKey(topic, 'deep', res.data.user_id));
-        await redis.del(researchKey(topic, 'fast', res.data.user_id));
+        await redis.del(researchKey(topic, mode, res.data.user_id));
       }
+    }
+    if (res.data.status === 'failed' && (res.data.user_id || userId) === userId) {
+      await refundIfFailed(jobId, userId);
     }
     return assertJobOwnership(res.data, userId);
   } catch (error: any) {
@@ -204,11 +268,10 @@ const getResearchHistory = async (
 
   try {
     // Query only the current user's history directly from the Python/Supabase DB
-    const url = `/history?limit=${limit}&user_id=${userId}`;
     const response = await pythonApiClient.get<{
       records: any[];
       count: number;
-    }>(url);
+    }>('/history', { params: { limit, user_id: userId } });
 
     // Map database history records to IPythonJobResponse format
     const mapped: IPythonJobResponse[] = (response.data.records || []).map((rec: any) => ({
@@ -247,7 +310,7 @@ const getResearchHistory = async (
 
 const getHistoryById = async (id: string, userId?: string) => {
   try {
-    const response = await pythonApiClient.get<any>(`/history/${id}`);
+    const response = await pythonApiClient.get<any>(`/history/${id}`, { params: { user_id: userId } });
     const dbRec = response.data;
     if (!dbRec) {
       throw new ApiError(httpStatus.NOT_FOUND, 'History record not found');
@@ -320,6 +383,7 @@ const checkAgentHealth = async () => {
 };
 
 export const ResearchService = {
+  registerJobCharge,
   startResearch,
   getJobStatus,
   getResearchHistory,

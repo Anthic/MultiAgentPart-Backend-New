@@ -4,6 +4,25 @@ import { INote } from "./note.interface";
 import { Note } from "./note.model";
 import { pythonApiClient } from "../../shared/axiosClient";
 
+// Push a note's current content to the vector vault. Same note id => the old vector is
+// replaced (upsert), so calling this after every edit keeps retrieval fresh.
+const syncNoteToVault = (note: INote & { _id: any }, userId: string): void => {
+  pythonApiClient.post('/api/v1/vault/sync', {
+    note_id: note._id.toString(),
+    user_id: userId,
+    title: note.title,
+    content: note.content,
+    tags: note.tags || [],
+    source_url: note.sourceUrl || '',
+  }).then((res) => {
+    if (res.data?.embedding_id) {
+      Note.findByIdAndUpdate(note._id, { embeddingId: res.data.embedding_id }).exec();
+    }
+  }).catch((err) => {
+    console.error('[Vault Sync Error] Failed to re-sync note to Qdrant:', err.message);
+  });
+};
+
 const createNote = async (payload: INote, userId: string): Promise<INote> => {
   const result = await Note.create({ ...payload, userId });
 
@@ -64,6 +83,9 @@ const updateNote = async (
     payload,
     { new: true, runValidators: true },
   );
+  // Edited content must reach the vector vault, otherwise the section drafter
+  // keeps retrieving the old text.
+  if (result) syncNoteToVault(result as any, userId);
   return result;
 };
 
@@ -74,6 +96,12 @@ const deleteNote = async (id: string, userId: string): Promise<INote | null> => 
     throw new ApiError(httpStatus.NOT_FOUND, 'Note not found');
   }
   const result = await Note.findOneAndDelete({ _id: id, userId });
+  // Remove the vector too, so a deleted note can never be retrieved again.
+  pythonApiClient
+    .delete(`/api/v1/vault/notes/${id}`, { params: { user_id: userId } })
+    .catch((err) => {
+      console.error('[Vault Delete Error] Failed to remove note vector:', err.message);
+    });
   return result;
 };
 

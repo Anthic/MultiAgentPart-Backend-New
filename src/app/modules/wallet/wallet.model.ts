@@ -35,6 +35,8 @@ const tokenAuditLogSchema = new Schema<ITokenAuditLog>(
     totalTokens: { type: Number, required: true },
     costBDT: { type: Number, required: true },
     creditsDeducted: { type: Number, required: true },
+    type: { type: String, enum: ['charge', 'refund'], default: 'charge' },
+    reason: { type: String },
   },
   {
     timestamps: true,

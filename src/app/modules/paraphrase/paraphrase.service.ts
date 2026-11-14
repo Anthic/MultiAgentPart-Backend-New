@@ -13,8 +13,16 @@ import {
 } from './paraphrase.interface';
 import { ParaphraseHistory } from './paraphrase.model';
 
-const PYTHON_API_URL = process.env.PYTHON_API_URL || 'https://api-atlash.duckdns.org';
-const PARAPHRASE_TIMEOUT_MS = Number(process.env.PARAPHRASE_TIMEOUT_MS) || 30000;
+const PYTHON_API_URL =
+  process.env.PYTHON_API_URL || 'https://api-atlash.duckdns.org';
+// The Python worker cascade allows ~45s per provider, so 30s here aborted
+// calls that would still have succeeded (and then refunded + retried them).
+const PARAPHRASE_TIMEOUT_MS =
+  Number(process.env.PARAPHRASE_TIMEOUT_MS) || 90000;
+// Hard cap the agent service accepts per request. Tier limits above this were
+// advertised (pro 5000, enterprise 20000) but could never actually be served.
+const PYTHON_PARAPHRASE_MAX_CHARS =
+  Number(process.env.PARAPHRASE_MAX_CHARS) || 5000;
 const DEFAULT_MODEL = process.env.PARAPHRASE_DEFAULT_MODEL || 'worker-groq';
 
 // Subscription Tier Limits
@@ -46,7 +54,10 @@ const MODEL_PRICING: Record<string, { input: number; output: number }> = {
 /**
  * Calculate token and cost estimate in BDT
  */
-const estimateCost = (text: string, model: string = DEFAULT_MODEL): ICostEstimate => {
+const estimateCost = (
+  text: string,
+  model: string = DEFAULT_MODEL,
+): ICostEstimate => {
   const charCount = text.length;
   const estimatedTokens = Math.max(1, Math.ceil(charCount * 0.25));
   const pricing = MODEL_PRICING[model] || MODEL_PRICING['worker-groq'];
@@ -64,7 +75,10 @@ const estimateCost = (text: string, model: string = DEFAULT_MODEL): ICostEstimat
 /**
  * Check and enforce Redis rate limits based on user subscription tier
  */
-const checkRateLimit = async (userId: string, tier: SubscriptionTier): Promise<void> => {
+const checkRateLimit = async (
+  userId: string,
+  tier: SubscriptionTier,
+): Promise<void> => {
   const limits = TIER_LIMITS[tier] || TIER_LIMITS.free;
   const currentHour = new Date().toISOString().slice(0, 13); // YYYY-MM-DDTHH
   const currentDay = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
@@ -136,7 +150,11 @@ const callPythonParaphraser = async (
   mode: string;
   provider_used: string;
   duration_sec: number;
-  token_usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+  token_usage: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
 }> => {
   const endpoint = `${PYTHON_API_URL.replace(/\/$/, '')}/api/v1/paraphrase`;
   let lastError: any = null;
@@ -156,6 +174,7 @@ const callPythonParaphraser = async (
           headers: {
             'Content-Type': 'application/json',
             'User-Agent': 'AtlasAI-Backend/1.0',
+            'X-Internal-Key': process.env.INTERNAL_API_KEY || '',
           },
         },
       );
@@ -164,27 +183,41 @@ const callPythonParaphraser = async (
 
       // Validate Python API response structure
       if (!data || typeof data.paraphrased_text !== 'string') {
-        throw new Error('Invalid response payload received from AI Paraphraser engine.');
+        throw new Error(
+          'Invalid response payload received from AI Paraphraser engine.',
+        );
       }
 
       return {
         paraphrased_text: data.paraphrased_text,
         mode: data.mode || payload.mode,
         provider_used: data.provider_used || DEFAULT_MODEL,
-        duration_sec: typeof data.duration_sec === 'number' ? data.duration_sec : 0,
+        duration_sec:
+          typeof data.duration_sec === 'number' ? data.duration_sec : 0,
         token_usage: {
           prompt_tokens: data.token_usage?.prompt_tokens || 0,
           completion_tokens: data.token_usage?.completion_tokens || 0,
           total_tokens:
             data.token_usage?.total_tokens ||
-            (data.token_usage?.prompt_tokens || 0) + (data.token_usage?.completion_tokens || 0),
+            (data.token_usage?.prompt_tokens || 0) +
+              (data.token_usage?.completion_tokens || 0),
         },
       };
     } catch (error: any) {
       lastError = error;
 
+      // Never retry a timeout: the first attempt may still be running and
+      // billing tokens upstream, so a retry doubles the cost for one charge.
+      if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+        break;
+      }
+
       // Do not retry 4xx errors (client errors)
-      if (error.response && error.response.status >= 400 && error.response.status < 500) {
+      if (
+        error.response &&
+        error.response.status >= 400 &&
+        error.response.status < 500
+      ) {
         break;
       }
 
@@ -196,7 +229,10 @@ const callPythonParaphraser = async (
   }
 
   // Handle timeout explicitly
-  if (lastError?.code === 'ECONNABORTED' || lastError?.message?.includes('timeout')) {
+  if (
+    lastError?.code === 'ECONNABORTED' ||
+    lastError?.message?.includes('timeout')
+  ) {
     throw new ApiError(
       httpStatus.GATEWAY_TIMEOUT,
       'AI Paraphraser timed out. The service is taking longer than usual.',
@@ -221,15 +257,17 @@ const paraphraseText = async (
 ): Promise<IParaphraseResult> => {
   // 1. Retrieve User Wallet & Subscription Tier
   const wallet = await WalletService.getOrCreateWallet(userId);
-  const tier: SubscriptionTier = (wallet.subscriptionTier as SubscriptionTier) || 'free';
+  const tier: SubscriptionTier =
+    (wallet.subscriptionTier as SubscriptionTier) || 'free';
   const limits = TIER_LIMITS[tier] || TIER_LIMITS.free;
+  const maxChars = Math.min(limits.MAX_CHARACTERS, PYTHON_PARAPHRASE_MAX_CHARS);
 
   // 2. Enforce Tier-Based Character Limits
   const textLength = payload.text.trim().length;
-  if (textLength > limits.MAX_CHARACTERS) {
+  if (textLength > maxChars) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      `Character limit exceeded. Your ${tier} tier allows up to ${limits.MAX_CHARACTERS} characters (you provided ${textLength} characters). Upgrade your plan to increase limits.`,
+      `Character limit exceeded. Your ${tier} tier allows up to ${maxChars} characters (you provided ${textLength} characters).`,
     );
   }
 
@@ -265,10 +303,10 @@ const paraphraseText = async (
       creditsDeducted: costBDT,
     });
   } catch (deductErr: any) {
-    throw new ApiError(
-      httpStatus.PAYMENT_REQUIRED,
-      deductErr.message || 'Could not deduct credits from wallet.',
-    );
+    // Keep the real status (402 insufficient funds vs 500 DB failure) instead
+    // of reporting every failure as "payment required".
+    if (deductErr instanceof ApiError) throw deductErr;
+    throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, 'Could not process wallet charge.');
   }
 
   // 7. Call Python Agent API with Auto-Refund on Failure
@@ -277,7 +315,11 @@ const paraphraseText = async (
     mode: string;
     provider_used: string;
     duration_sec: number;
-    token_usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+    token_usage: {
+      prompt_tokens: number;
+      completion_tokens: number;
+      total_tokens: number;
+    };
   };
 
   try {
@@ -289,8 +331,11 @@ const paraphraseText = async (
         costBDT,
         tokensToRefund: costEstimate.estimatedTokens,
         reason: 'Paraphrase service failure auto-refund',
+        action: 'paraphrase',
       });
-      console.log(`[Paraphrase Auto-Refund] Successfully refunded ৳${costBDT} to user ${userId}.`);
+      console.log(
+        `[Paraphrase Auto-Refund] Successfully refunded ৳${costBDT} to user ${userId}.`,
+      );
     } catch (refundError) {
       console.error(
         `[CRITICAL: Paraphrase Refund Failed] Failed to refund ৳${costBDT} to user ${userId}:`,

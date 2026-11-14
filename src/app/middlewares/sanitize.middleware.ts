@@ -1,15 +1,43 @@
 import { Request, Response, NextFunction } from 'express';
 
-function stripHtml(value: unknown): unknown {
+// Fields that must reach the handler byte-for-byte:
+//  - credentials/tokens: stripping '<...>' silently changed passwords, so a
+//    password containing e.g. "a<b>c" could never log in again;
+//  - free-form document/code text, where '<tag>' is legitimate content. These
+//    are escaped by the React front end on render, not mangled on the way in.
+const RAW_KEYS = new Set([
+  'password',
+  'currentPassword',
+  'newPassword',
+  'confirmPassword',
+  'refreshToken',
+  'accessToken',
+  'token',
+  'val_id',
+  'content',
+  'contentMarkdown',
+  'text',
+  'abstract',
+  'slidesMarkdown',
+  'literature_context',
+  'instructions',
+]);
+
+// Only remove things that really are HTML tags (<b>, </script>, <img ...>);
+// "a < b and c > d" is left alone instead of being eaten.
+const TAG_RE = /<\/?[a-zA-Z][^>]*>/g;
+
+function stripHtml(value: unknown, key?: string): unknown {
+  if (key && RAW_KEYS.has(key)) return value;
   if (typeof value === 'string') {
-    return value.replace(/<[^>]*>/g, '').trim();
+    return value.replace(TAG_RE, '').trim();
   }
-  if (Array.isArray(value)) return value.map(stripHtml);
+  if (Array.isArray(value)) return value.map((v) => stripHtml(v, key));
   if (value && typeof value === 'object') {
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>).map(([k, v]) => [
         k,
-        stripHtml(v),
+        stripHtml(v, k),
       ]),
     );
   }

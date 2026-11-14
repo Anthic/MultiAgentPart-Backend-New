@@ -2,6 +2,9 @@ import mongoose from 'mongoose';
 import httpStatus from 'http-status';
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
+import jwt from 'jsonwebtoken';
+import { redis } from '../../../config/redis';
+import { accessBlacklistKey, safeEqualHex, sha256 } from '../../utils/tokenSecurity';
 import ApiError from '../../errors/ApiError';
 import { jwtHelpers } from '../../helpers/jwtHelpers';
 import { SignOptions } from 'jsonwebtoken';
@@ -17,6 +20,11 @@ import config from '../../../config';
 import { validatePasswordComplexity } from '../../utils/passwordUtils';
 
 
+// Compared against when the email is unknown so a missing account costs the
+// same bcrypt time as a wrong password (no timing-based user enumeration).
+const DUMMY_HASH = bcrypt.hashSync('not-a-real-password', 10);
+const INVALID_LOGIN = 'Invalid email or password';
+
 const createTokens = (payload: {
   userId: string;
   role: string;
@@ -28,8 +36,9 @@ const createTokens = (payload: {
     (config.jwt.access_expires_in || '15m') as SignOptions['expiresIn'],
   );
 
+  // jti makes every refresh token unique, even two issued in the same second.
   const refreshToken = jwtHelpers.createToken(
-    payload,
+    { ...payload, jti: randomUUID() },
     config.jwt.refresh_secret as string,
     (config.jwt.refresh_expires_in || '7d') as SignOptions['expiresIn'],
   );
@@ -40,7 +49,8 @@ const createTokens = (payload: {
 const registerUser = async (
   payload: IRegisterUser,
 ): Promise<ILoginUserServiceResponse> => {
-  const { name, email, password } = payload;
+  const { name, password } = payload;
+  const email = String(payload.email).trim().toLowerCase();
 
   // Password Complexity Check
   const { isValid, errors } = validatePasswordComplexity(password);
@@ -101,45 +111,30 @@ const registerUser = async (
 const loginUser = async (
   payload: ILoginUser,
 ): Promise<ILoginUserServiceResponse> => {
-  const { email, password } = payload;
+  const { password } = payload;
+  const email = String(payload.email).trim().toLowerCase();
 
   const authUser = await AuthUser.findOne({ email }).select(
     '+password +loginAttempts +lockUntil',
   );
 
+  // One generic message for: unknown email, wrong password, and locked account,
+  // so the response never reveals whether an account exists or how close it is
+  // to locking.
   if (!authUser) {
-    throw new ApiError(httpStatus.NOT_FOUND, 'User does not exist');
+    await bcrypt.compare(password, DUMMY_HASH);
+    throw new ApiError(httpStatus.UNAUTHORIZED, INVALID_LOGIN);
   }
 
-  // Check if locked
   if (authUser.isLocked()) {
-    const remainingTime = Math.ceil(
-      (authUser.lockUntil!.getTime() - Date.now()) / 60000,
-    );
-    throw new ApiError(
-      httpStatus.TOO_MANY_REQUESTS,
-      `Account locked. Try again in ${remainingTime} minutes`,
-    );
+    throw new ApiError(httpStatus.UNAUTHORIZED, INVALID_LOGIN);
   }
 
   const isPasswordMatched = await bcrypt.compare(password, authUser.password);
 
   if (!isPasswordMatched) {
     await authUser.incrementLoginAttempts();
-    const updatedUser = await AuthUser.findById(authUser._id).select(
-      '+loginAttempts +lockUntil',
-    );
-    if (updatedUser?.isLocked()) {
-      throw new ApiError(
-        httpStatus.TOO_MANY_REQUESTS,
-        'Account locked due to too many failed attempts',
-      );
-    }
-    const remaining = config.account_lock.max_attempts - updatedUser!.loginAttempts;
-    throw new ApiError(
-      httpStatus.UNAUTHORIZED,
-      `Invalid credentials. ${remaining} attempts remaining`,
-    );
+    throw new ApiError(httpStatus.UNAUTHORIZED, INVALID_LOGIN);
   }
 
   await authUser.resetLoginAttempts();
@@ -150,9 +145,10 @@ const loginUser = async (
     email: authUser.email,
   });
 
-  // Store hashed refresh token for rotation
-  const hashedRT = await bcrypt.hash(tokens.refreshToken, 10);
-  await AuthUser.findByIdAndUpdate(authUser._id, { refreshToken: hashedRT });
+  // Store a SHA-256 digest of the refresh token for rotation/reuse detection
+  await AuthUser.findByIdAndUpdate(authUser._id, {
+    refreshToken: sha256(tokens.refreshToken),
+  });
 
   return {
     ...tokens,
@@ -183,14 +179,13 @@ const refreshToken = async (token: string): Promise<IRefreshTokenResponse> => {
     throw new ApiError(httpStatus.UNAUTHORIZED, 'Please login again');
   }
 
-  // Rotation check
-  const isMatch = await bcrypt.compare(token, authUser.refreshToken);
-  if (!isMatch) {
-    await AuthUser.findByIdAndUpdate(authUser._id, { refreshToken: null });
-    throw new ApiError(
-      httpStatus.UNAUTHORIZED,
-      'Token reuse detected. Please login again',
-    );
+  const presented = sha256(token);
+
+  // Reuse detection: a validly-signed token that is not the current one was
+  // already rotated away (or stolen). Kill the session entirely.
+  if (!safeEqualHex(presented, authUser.refreshToken)) {
+    await AuthUser.updateOne({ _id: authUser._id }, { refreshToken: null });
+    throw new ApiError(httpStatus.UNAUTHORIZED, 'Please login again');
   }
 
   const newTokens = createTokens({
@@ -199,14 +194,32 @@ const refreshToken = async (token: string): Promise<IRefreshTokenResponse> => {
     email: authUser.email,
   });
 
-  const newHashedRT = await bcrypt.hash(newTokens.refreshToken, 10);
-  await AuthUser.findByIdAndUpdate(authUser._id, { refreshToken: newHashedRT });
+  // Atomic compare-and-swap: of two concurrent refreshes with the same token,
+  // exactly one wins; the other sees no match and is treated as reuse.
+  const rotated = await AuthUser.findOneAndUpdate(
+    { _id: authUser._id, refreshToken: presented },
+    { refreshToken: sha256(newTokens.refreshToken) },
+  );
+  if (!rotated) {
+    await AuthUser.updateOne({ _id: authUser._id }, { refreshToken: null });
+    throw new ApiError(httpStatus.UNAUTHORIZED, 'Please login again');
+  }
 
   return newTokens;
 };
 
-const logoutUser = async (userId: string): Promise<void> => {
+const logoutUser = async (userId: string, accessToken?: string): Promise<void> => {
   await AuthUser.findOneAndUpdate({ userId }, { refreshToken: null });
+
+  // Blacklist the access token for its remaining lifetime. auth.authenticate
+  // already checks this list; nothing ever wrote to it before.
+  if (accessToken) {
+    const decoded = jwt.decode(accessToken) as { exp?: number } | null;
+    const ttl = decoded?.exp ? decoded.exp - Math.floor(Date.now() / 1000) : 0;
+    if (ttl > 0) {
+      await redis.set(accessBlacklistKey(accessToken), '1', 'EX', ttl);
+    }
+  }
 };
 
 export const AuthService = {

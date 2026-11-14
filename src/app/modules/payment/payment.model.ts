@@ -6,6 +6,7 @@ const paymentSchema = new Schema<IPayment>(
     userId: { type: String, required: true, index: true },
     transactionId: { type: String, required: true, unique: true, index: true },
     amountBDT: { type: Number, required: true },
+    currency: { type: String, default: 'BDT' },
     paymentType: {
       type: String,
       enum: ['wallet_topup', 'subscription_pro'],
@@ -16,6 +17,8 @@ const paymentSchema = new Schema<IPayment>(
       enum: Object.values(PAYMENT_STATUS),
       default: PAYMENT_STATUS.UNPAID,
     },
+    creditedAt: { type: Date, default: null },
+    gatewayValId: { type: String },
     paymentGatewayData: { type: Schema.Types.Mixed },
   },
   {

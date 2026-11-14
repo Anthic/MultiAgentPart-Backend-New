@@ -42,9 +42,8 @@ const sslPaymentInit = async (payload: ISSLPaymentPayload): Promise<string> => {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
+      timeout: 15000,
     });
-
-    console.log('[SSLCommerz Init Response]', response.data);
 
     if (response.data?.status === 'SUCCESS' && response.data?.GatewayPageURL) {
       return response.data.GatewayPageURL;
@@ -60,25 +59,31 @@ const sslPaymentInit = async (payload: ISSLPaymentPayload): Promise<string> => {
     throw new ApiError(httpStatus.BAD_REQUEST, `SSLCommerz Error: ${failedReason}`);
   } catch (error: any) {
     console.error('[SSLCommerz Exception]', error.response?.data || error.message);
+    if (error instanceof ApiError) throw error;
     throw new ApiError(
-      httpStatus.BAD_REQUEST,
-      error.response?.data?.failedreason || error.message || 'SSLCommerz initialization failed',
+      httpStatus.BAD_GATEWAY,
+      error.response?.data?.failedreason || 'SSLCommerz initialization failed',
     );
   }
 };
 
 const validatePayment = async (val_id: string): Promise<any> => {
   try {
-    const response = await axios.get(
-      `${config.ssl.validation_api}?val_id=${val_id}&store_id=${config.ssl.store_id}&store_passwd=${config.ssl.store_pass}&format=json`,
-    );
+    // Credentials go through axios params (encoded) with a hard timeout.
+    const response = await axios.get(config.ssl.validation_api, {
+      params: {
+        val_id,
+        store_id: config.ssl.store_id,
+        store_passwd: config.ssl.store_pass,
+        format: 'json',
+      },
+      timeout: 15000,
+    });
 
     return response.data;
   } catch (error: any) {
-    throw new ApiError(
-      httpStatus.BAD_REQUEST,
-      `Payment validation failed: ${error.message}`,
-    );
+    console.error('[SSLCommerz Validation Error]', error.response?.status || error.code);
+    throw new ApiError(httpStatus.BAD_GATEWAY, 'Payment validation failed');
   }
 };
 

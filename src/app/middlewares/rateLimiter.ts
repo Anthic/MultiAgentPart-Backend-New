@@ -4,6 +4,7 @@ import { Response, NextFunction } from 'express';
 import { redis } from '../../config/redis';
 import { AuthenticatedRequest } from '../interfaces/auth';
 import { Wallet } from '../modules/wallet/wallet.model';
+import ApiError from '../errors/ApiError';
 
 const toNumber = (value: string | undefined, fallback: number): number => {
   const parsed = Number(value);
@@ -13,7 +14,9 @@ const toNumber = (value: string | undefined, fallback: number): number => {
 const windowMs = toNumber(config.rate_limit_window_ms, 15 * 60 * 1000);
 const maxRequests = toNumber(config.rate_limit_max, 100);
 
-const FREE_DAILY_RESEARCH_LIMIT = 1;
+// RESEARCH_DAILY_LIMIT was read into config but never used; honour it now.
+// Default stays 1 so behaviour is unchanged unless the env var is set.
+const FREE_DAILY_RESEARCH_LIMIT = Math.max(0, Math.floor(toNumber(config.research_daily_limit, 1)));
 const RESEARCH_COST_BDT = 10.0;
 const researchQuotaTtlSeconds = 24 * 60 * 60;
 
@@ -60,6 +63,22 @@ export const refundResearchQuota = async (userId: string): Promise<void> => {
   );
 };
 
+// Reserve one free-quota slot atomically. The old GET -> compare -> INCR ->
+// EXPIRE sequence let N parallel requests all read "0 used" and all get a free
+// run, and a crash between INCR and EXPIRE left a counter that never reset.
+// Returns [newCount, ttl], or [-1, ttl] when the quota is already exhausted.
+const RESERVE_QUOTA_LUA = `
+local cur = tonumber(redis.call("GET", KEYS[1]) or "0")
+if cur >= tonumber(ARGV[1]) then
+  return {-1, redis.call("TTL", KEYS[1])}
+end
+local n = redis.call("INCR", KEYS[1])
+if n == 1 or redis.call("TTL", KEYS[1]) < 0 then
+  redis.call("EXPIRE", KEYS[1], ARGV[2])
+end
+return {n, redis.call("TTL", KEYS[1])}
+`;
+
 export const apiRateLimiter = rateLimit({
   windowMs,
   max: maxRequests,
@@ -97,32 +116,31 @@ export const aiRequestLimiter = async (
     const userId = req.user.userId;
     const key = researchQuotaKey(userId);
 
-  
-    const currentUsageStr = await redis.get(key);
-    const ttl = await redis.ttl(key);
-    const currentUsage = parseInt(currentUsageStr || '0', 10);
+    const [count, ttl] = (await redis.eval(
+      RESERVE_QUOTA_LUA,
+      1,
+      key,
+      String(FREE_DAILY_RESEARCH_LIMIT),
+      String(researchQuotaTtlSeconds),
+    )) as [number, number];
+
+    if (count > 0) {
+      req.isFreeRequest = true;
+      req.researchQuota = {
+        limit: FREE_DAILY_RESEARCH_LIMIT,
+        used: count,
+        remaining: Math.max(FREE_DAILY_RESEARCH_LIMIT - count, 0),
+        resetAt: getResetAt(Number(ttl)),
+      };
+      return next();
+    }
 
     const quota: ResearchQuota = {
       limit: FREE_DAILY_RESEARCH_LIMIT,
-      used: Math.min(currentUsage, FREE_DAILY_RESEARCH_LIMIT),
-      remaining: Math.max(FREE_DAILY_RESEARCH_LIMIT - currentUsage, 0),
+      used: FREE_DAILY_RESEARCH_LIMIT,
+      remaining: 0,
       resetAt: getResetAt(Number(ttl)),
     };
-
-    
-    if (currentUsage < FREE_DAILY_RESEARCH_LIMIT) {
-      await redis.incr(key);
-      if (currentUsage === 0) {
-        await redis.expire(key, researchQuotaTtlSeconds);
-      }
-      req.isFreeRequest = true;
-      req.researchQuota = {
-        ...quota, 
-        used : currentUsage + 1,
-        remaining : Math.max(FREE_DAILY_RESEARCH_LIMIT - (currentUsage + 1), 0)
-      }
-      return next();
-    }
 
    
     const wallet = await Wallet.findOne({ userId });
@@ -140,7 +158,7 @@ export const aiRequestLimiter = async (
     res.status(402).json({
       statusCode: 402,
       success: false,
-      message: `Daily free trial limit (1/1) reached. Additional searches cost ৳${RESEARCH_COST_BDT}. Your balance: ৳${userBalance.toFixed(2)}. Please recharge via bKash/Nagad to continue.`,
+      message: `Daily free trial limit (${FREE_DAILY_RESEARCH_LIMIT}/${FREE_DAILY_RESEARCH_LIMIT}) reached. Additional searches cost ৳${RESEARCH_COST_BDT}. Your balance: ৳${userBalance.toFixed(2)}. Please recharge via bKash/Nagad to continue.`,
       data: {
         quota,
         walletBalanceBDT: userBalance,
@@ -149,7 +167,9 @@ export const aiRequestLimiter = async (
     });
     return;
   } catch (error) {
+    // Fail CLOSED. Letting the request through when Redis (the quota store)
+    // is down meant an outage handed out unlimited free, unmetered research.
     console.error('Rate limiter error:', error);
-    next();
+    next(new ApiError(503, 'Usage quota service is temporarily unavailable. Please retry shortly.'));
   }
 };

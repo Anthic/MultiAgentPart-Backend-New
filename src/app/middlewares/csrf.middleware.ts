@@ -92,8 +92,11 @@ const isWhitelistedOrigin = (originHeader: string | undefined, refererHeader: st
   // Remove trailing slashes for clean matching
   const normalizedRequestOrigin = requestOrigin.toLowerCase().replace(/\/$/, '');
 
+  // With no CORS allowlist configured we must not accept every Origin: that
+  // made the Origin check a no-op. Fall through to the CSRF token instead.
+  // (Local development already bypasses CSRF above.)
   if (!config.cors_origin) {
-    return true; // Fallback for dev environment without a strict CORS whitelist
+    return false;
   }
 
   const allowedOrigins = config.cors_origin.split(',').map(o => o.trim().toLowerCase().replace(/\/$/, ''));
@@ -110,7 +113,11 @@ export const verifyCsrf = (req: Request, _res: Response, next: NextFunction) => 
     return next();
   }
 
-  if (req.originalUrl.includes('/payment') || req.path.startsWith('/payment')) {
+  // Only the gateway-initiated callbacks are exempt (SSLCommerz posts from
+  // its own origin, with no cookie or token). init-recharge is NOT exempt.
+  // They are safe without CSRF because settlement is verified server-to-server
+  // against the gateway (val_id + tran_id + amount + currency).
+  if (/^\/api\/v1\/payment\/(success|fail|cancel|ipn)(\/|\?|$)/.test(req.originalUrl)) {
     return next();
   }
 

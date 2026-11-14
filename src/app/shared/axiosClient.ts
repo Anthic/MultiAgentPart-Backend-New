@@ -22,10 +22,11 @@ class CircuitBreaker {
   }
 
   public recordSuccess(): void {
+    // Any healthy response clears the streak; previously failures accumulated
+    // across hours and eventually tripped the breaker on 5 *scattered* errors.
+    this.failureCount = 0;
     if (this.state === 'HALF-OPEN') {
       this.state = 'CLOSED';
-      this.failureCount = 0;
-      // console.log('[Circuit Breaker] Python API recovered. State set to CLOSED.');
     }
   }
 
@@ -46,9 +47,10 @@ const breaker = new CircuitBreaker();
 // Reduced timeout from 60000ms to 20000ms to prevent hanging requests
 export const pythonApiClient = axios.create({
   baseURL: PYTHON_API_URL,
-  timeout: 20000, 
+  timeout: 20000,
   headers: {
     'Content-Type': 'application/json',
+    'X-Internal-Key': process.env.INTERNAL_API_KEY || '',
   },
 });
 
@@ -68,7 +70,15 @@ pythonApiClient.interceptors.response.use(
   },
   (error) => {
     if (!axios.isCancel(error)) {
-      breaker.recordFailure();
+      const status: number | undefined = error.response?.status;
+      if (status && status < 500) {
+        // 4xx = the service answered correctly (bad input, not found, auth).
+        // It is healthy; a few bad requests must not open the breaker for
+        // every user.
+        breaker.recordSuccess();
+      } else {
+        breaker.recordFailure();
+      }
       console.error(
         ' Python Agent API Error:',
         error.response?.data || error.message,

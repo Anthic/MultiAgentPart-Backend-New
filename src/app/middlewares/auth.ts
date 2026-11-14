@@ -6,6 +6,7 @@ import { jwtHelpers } from '../helpers/jwtHelpers';
 import { authCookieNames } from '../constants/auth';
 import { Role } from '../constants/role';
 import { redis } from '../../config/redis';
+import { accessBlacklistKey, userRevokedKey } from '../utils/tokenSecurity';
 
 const authenticate = async (
   req: Request,
@@ -21,29 +22,43 @@ const authenticate = async (
   if (!token) {
     throw new ApiError(httpStatus.UNAUTHORIZED, 'Authentication required');
   }
+  let verified;
   try {
- 
-    const isBlacklisted = await redis.get(`token_blacklist:${token}`);
-    if (isBlacklisted) {
-      throw new ApiError(httpStatus.UNAUTHORIZED, 'Session has been revoked. Please login again.');
-    }
- 
-    const verified = jwtHelpers.verifyToken(
+    verified = jwtHelpers.verifyToken(
       token,
       config.jwt.access_secret as string,
     );
- 
+  } catch (error: any) {
+    if (error.name === 'TokenExpiredError') {
+      throw new ApiError(httpStatus.UNAUTHORIZED, 'Token has expired, please refresh');
+    }
+    // Do not echo jsonwebtoken internals to the client.
+    throw new ApiError(httpStatus.UNAUTHORIZED, 'Invalid token');
+  }
+
+  // Revocation checks (logout / deleted account). Fail CLOSED: if Redis is
+  // unreachable we cannot prove the session is still valid.
+  let revoked: (string | null)[];
+  try {
+    revoked = await redis.mget(
+      accessBlacklistKey(token),
+      userRevokedKey(String(verified.userId)),
+    );
+  } catch (error) {
+    console.error('[auth] revocation check unavailable:', (error as Error).message);
+    throw new ApiError(httpStatus.SERVICE_UNAVAILABLE, 'Authentication service unavailable, please retry');
+  }
+  if (revoked[0] || revoked[1]) {
+    throw new ApiError(httpStatus.UNAUTHORIZED, 'Session has been revoked. Please login again.');
+  }
+
+  {
     req.user = {
       userId: verified.userId as string,
       role: verified.role as Role,
       email: verified.email as string,
     };
     next();
-  } catch (error: any) {
-    if (error.name === 'TokenExpiredError') {
-      throw new ApiError(httpStatus.UNAUTHORIZED, 'Token has expired, please refresh');
-    }
-    throw new ApiError(httpStatus.UNAUTHORIZED, error.message || 'Invalid token');
   }
 };
 

@@ -11,6 +11,7 @@ import ApiError from '../../errors/ApiError';
 import { getResearchQuota, refundResearchQuota } from '../../middlewares/rateLimiter';
 import { AuthenticatedRequest } from '../../interfaces/auth';
 import { WalletService } from '../wallet/wallet.service';
+import { clampInt } from '../../utils/pagination';
 const startResearch = catchAsync(async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest
   const { topic, mode } = req.body as IResearchStartRequest;
@@ -40,10 +41,27 @@ const startResearch = catchAsync(async (req: Request, res: Response) => {
     if (authReq.isFreeRequest) {
       await refundResearchQuota(userId)
     } else if(authReq.chargeAmountBDT) {
-      await WalletService.addFundsToWallet(userId, authReq.chargeAmountBDT)
+      // refundCredits (not addFunds) so totalSpentBDT and the audit log are
+      // reversed too, instead of still showing a charge for a failed start.
+      await WalletService.refundCredits(userId, {
+        costBDT: authReq.chargeAmountBDT,
+        tokensToRefund: 3000,
+        reason: 'Research job failed to start',
+        action: 'deep_research',
+      })
     }
 
     throw error;
+  }
+
+  // The job runs asynchronously in the Python service. Record what it cost so a
+  // later failure (status "failed") refunds the user when they poll it.
+  if (result?.job_id && result.status !== 'done') {
+    await ResearchService.registerJobCharge(result.job_id, {
+      userId,
+      kind: authReq.isFreeRequest ? 'free' : 'paid',
+      amountBDT: authReq.isFreeRequest ? 0 : authReq.chargeAmountBDT || 0,
+    });
   }
   sendResponse(res, {
     statusCode: httpStatus.ACCEPTED,
@@ -101,7 +119,7 @@ const getResearchHistory = catchAsync(async (req: Request, res: Response) => {
     throw new ApiError(httpStatus.UNAUTHORIZED, 'Unauthorized');
   }
 
-  const limit = parseInt(req.query.limit as string) || 10;
+  const limit = clampInt(req.query.limit, 10, 1, 50);
   const result = await ResearchService.getResearchHistory(limit, userId);
   sendResponse(res, {
     statusCode: httpStatus.OK,

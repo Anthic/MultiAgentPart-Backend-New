@@ -5,6 +5,7 @@ import sendResponse from '../../utils/sendResponse';
 import ApiError from '../../errors/ApiError';
 import { ParaphraseService } from './paraphrase.service';
 import { IParaphraseRequest } from './paraphrase.interface';
+import { clampInt } from '../../utils/pagination';
 
 const paraphraseText = catchAsync(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
@@ -29,7 +30,7 @@ const getParaphraseHistory = catchAsync(async (req: Request, res: Response) => {
     throw new ApiError(httpStatus.UNAUTHORIZED, 'Authentication required');
   }
 
-  const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
+  const limit = clampInt(req.query.limit, 20, 1, 100);
   const history = await ParaphraseService.getParaphraseHistory(userId, limit);
 
   sendResponse(res, {

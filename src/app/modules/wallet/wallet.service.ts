@@ -5,15 +5,26 @@ import { TokenAuditLog, Wallet } from './wallet.model';
 
 const SIGNUP_BONUS_BDT = 10.0;
 
+// Atomic get-or-create. The old findOne-then-create could, under concurrent
+// first requests, throw a duplicate-key error or create two wallets' worth of
+// signup bonus. $setOnInsert only ever applies to the single inserted doc.
 const getOrCreateWallet = async (userId: string): Promise<IWallet> => {
-  let wallet = await Wallet.findOne({ userId });
-  if (!wallet) {
-    wallet = await Wallet.create({
-      userId,
-      balanceBDT: SIGNUP_BONUS_BDT,
-    });
+  const upsert = () =>
+    Wallet.findOneAndUpdate(
+      { userId },
+      { $setOnInsert: { userId, balanceBDT: SIGNUP_BONUS_BDT } },
+      { upsert: true, new: true },
+    );
+  try {
+    return (await upsert()) as IWallet;
+  } catch (err: any) {
+    // Two concurrent upserts can race on the unique index; the loser just reads.
+    if (err?.code === 11000) {
+      const existing = await Wallet.findOne({ userId });
+      if (existing) return existing;
+    }
+    throw err;
   }
-  return wallet;
 };
 
 const getWalletBalance = async (userId: string): Promise<IWallet> => {
@@ -88,6 +99,7 @@ const refundCredits = async (
     costBDT: number;
     tokensToRefund?: number;
     reason?: string;
+    action?: ITokenAuditLog['action'];
   },
 ): Promise<IWallet> => {
   if (payload.costBDT <= 0) return await getOrCreateWallet(userId);
@@ -105,6 +117,20 @@ const refundCredits = async (
     { new: true },
   );
 
+  // Write a matching audit row so a refunded charge is visible as refunded.
+  await TokenAuditLog.create({
+    userId,
+    action: payload.action || 'deep_research',
+    modelUsed: 'refund',
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+    costBDT: payload.costBDT,
+    creditsDeducted: payload.costBDT,
+    type: 'refund',
+    reason: payload.reason,
+  });
+
   return updatedWallet || (await getOrCreateWallet(userId));
 };
 
@@ -112,7 +138,7 @@ const addFundsToWallet = async (
   userId: string,
   amountBDT: number,
 ): Promise<IWallet> => {
-  if (amountBDT <= 0) {
+  if (!Number.isFinite(amountBDT) || amountBDT <= 0) {
     throw new ApiError(httpStatus.BAD_REQUEST, 'Recharge amount must be greater than 0 BDT');
   }
   await getOrCreateWallet(userId);

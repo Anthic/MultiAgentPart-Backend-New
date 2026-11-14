@@ -26,30 +26,52 @@ const initRecharge = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
-const successPayment = catchAsync(async (req: Request, res: Response) => {
-  const payload = { ...req.query, ...req.body } as Record<string, string>;
-  const result = await PaymentService.handlePaymentSuccess(payload);
-  const transactionId = payload.tran_id || payload.transactionId
+// SSLCommerz sends tran_id in the POST body; our own callback URLs also carry
+// ?transactionId=. Read both, never trust amount/status from here.
+const callbackParams = (req: Request): Record<string, string> =>
+  ({ ...req.query, ...req.body }) as Record<string, string>;
+
+const redirectWith = (res: Response, base: string, transactionId: string, message: string) =>
   res.redirect(
-    `${config.ssl.success_frontend_url}&transactionId=${transactionId}&message=${encodeURIComponent(result.message)}`,
+    `${base}&transactionId=${encodeURIComponent(transactionId)}&message=${encodeURIComponent(message)}`,
   );
+
+const successPayment = catchAsync(async (req: Request, res: Response) => {
+  const payload = callbackParams(req);
+  const transactionId = String(payload.tran_id || payload.transactionId || '');
+  try {
+    const result = await PaymentService.handlePaymentSuccess(payload);
+    redirectWith(res, config.ssl.success_frontend_url, transactionId, result.message);
+  } catch (err: any) {
+    // The browser is mid-redirect from the gateway: send it to the failure
+    // page instead of leaving it on a raw JSON error.
+    if (err instanceof ApiError) {
+      redirectWith(res, config.ssl.fail_frontend_url, transactionId, 'Payment could not be verified');
+      return;
+    }
+    throw err;
+  }
 });
 
 const failPayment = catchAsync(async (req: Request, res: Response) => {
-  const query = req.query as Record<string, string>;
-  await PaymentService.handlePaymentFail(query);
-
-  res.redirect(
-    `${config.ssl.fail_frontend_url}&transactionId=${query.transactionId}&message=Payment%20Failed`,
+  const params = callbackParams(req);
+  await PaymentService.handlePaymentFail(params);
+  redirectWith(
+    res,
+    config.ssl.fail_frontend_url,
+    String(params.tran_id || params.transactionId || ''),
+    'Payment Failed',
   );
 });
 
 const cancelPayment = catchAsync(async (req: Request, res: Response) => {
-  const query = req.query as Record<string, string>;
-  await PaymentService.handlePaymentCancel(query);
-
-  res.redirect(
-    `${config.ssl.cancel_frontend_url}&transactionId=${query.transactionId}&message=Payment%20Cancelled`,
+  const params = callbackParams(req);
+  await PaymentService.handlePaymentCancel(params);
+  redirectWith(
+    res,
+    config.ssl.cancel_frontend_url,
+    String(params.tran_id || params.transactionId || ''),
+    'Payment Cancelled',
   );
 });
 

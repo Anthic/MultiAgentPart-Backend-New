@@ -13,7 +13,9 @@ declare global {
   // eslint-disable-next-line no-var
   var _mongooseConnection: typeof mongoose | undefined;
 }
-const isServerless = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
+// Small pools only on Vercel (one connection set per warm lambda). A normal
+// long-running production server needs a real pool.
+const isServerless = process.env.VERCEL === '1';
 async function connectDB(): Promise<void> {
   if (global._mongooseConnection) {
     // Reuse existing cached connection
@@ -33,8 +35,8 @@ async function connectDB(): Promise<void> {
   await mongoose.connect(dbUrl, {
     serverSelectionTimeoutMS: 10000,
     socketTimeoutMS: 45000,
-    maxPoolSize: isServerless ? 3 : 50,
-    minPoolSize: isServerless ? 1 : 10,
+    maxPoolSize: isServerless ? 3 : Number(process.env.DB_POOL_MAX) || 20,
+    minPoolSize: isServerless ? 1 : 2,
     retryWrites: true,
   });
 
@@ -46,6 +48,15 @@ async function connectDB(): Promise<void> {
 process.on('uncaughtException', (error) => {
   console.error(' Uncaught Exception detected, shutting down...', error);
   process.exit(1);
+});
+
+// Registered once, at top level. It used to be added inside main(), so every
+// DB-connect retry stacked another listener, and a single stray rejection in
+// one request (e.g. a failed fire-and-forget Redis/axios call) killed the whole
+// server and every in-flight payment/research request with it. Log loudly and
+// keep serving; truly fatal state still goes through uncaughtException.
+process.on('unhandledRejection', (reason) => {
+  console.error(' Unhandled Rejection (server kept running):', reason);
 });
 
 async function main() {
@@ -62,16 +73,6 @@ async function main() {
     return;
   }
 
-  process.on('unhandledRejection', (error) => {
-    console.error('Unhandled Rejection detected, shutting down...', error);
-    if (server) {
-      server.close(() => {
-        process.exit(1);
-      });
-    } else {
-      process.exit(1);
-    }
-  });
 }
 
 main();
